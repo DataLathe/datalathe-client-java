@@ -30,14 +30,15 @@ Add the following dependency to your `pom.xml`:
 ```java
 DatalatheClient client = new DatalatheClient("http://localhost:8080");
 
-// Stage data
-List<String> queries = Arrays.asList(
-    "SELECT * FROM users",
-    "SELECT * FROM orders"
-);
-List<String> chipIds = client.stageData("my_database", queries, "my_table");
+// Stage data from a single query
+String stageQuery = "SELECT * FROM users";
+List<String> chipIds = client.stageData("my_database", stageQuery, "my_table");
 
-// Execute queries
+// Execute multiple queries on the staged data
+List<String> queries = Arrays.asList(
+    "SELECT * FROM my_table",
+    "SELECT COUNT(*) FROM my_table"
+);
 Map<Integer, ResultSet> results = client.query(chipIds, queries);
 
 // Process results
