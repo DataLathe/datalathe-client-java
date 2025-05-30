@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.datalathe.client.model.DatalatheResultSetTest
--------------------------------------------------------------------------------
-Tests run: 13, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.027 s -- in com.datalathe.client.model.DatalatheResultSetTest
