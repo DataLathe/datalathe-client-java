@@ -1,0 +1,12 @@
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/DatalatheClient.java
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/examples/DatalatheClientExample.java
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/model/AbstractResultSet.java
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/model/DatalatheResultSet.java
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/model/PartitionRequest.java
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/model/ReportRequest.java
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/model/ReportResponse.java
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/model/ReportType.java
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/model/SourceRequest.java
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/model/SourceType.java
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/model/StageDataRequest.java
+/Users/jasonhansen/Development/datalathe/datalathe-client-java/src/main/java/com/datalathe/client/model/StageDataSourceRequest.java
