@@ -17,6 +17,12 @@ public class StageDataRequest {
     public StageDataRequest() {
     }
 
+    public StageDataRequest(StageDataRequest requestBase) {
+        this.sourceType = requestBase.getSourceType();
+        this.sourceRequest = requestBase.getSourceRequest();
+        this.chipId = requestBase.getChipId();
+    }
+
     public StageDataRequest(SourceType sourceType, StageDataSourceRequest sourceRequest) {
         this.sourceType = sourceType;
         this.sourceRequest = sourceRequest;

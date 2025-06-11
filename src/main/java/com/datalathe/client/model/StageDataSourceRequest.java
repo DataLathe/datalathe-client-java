@@ -29,7 +29,9 @@ public class StageDataSourceRequest {
     public StageDataSourceRequest() {
     }
 
-    public StageDataSourceRequest(String query) {
+    public StageDataSourceRequest(String databaseName, String tableName, String query) {
+        this.databaseName = databaseName;
+        this.tableName = tableName;
         this.query = query;
     }
 
