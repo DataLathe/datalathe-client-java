@@ -38,42 +38,27 @@ public class DatalatheClientTest {
         public void testStageData() throws IOException, InterruptedException {
                 // Prepare test data
                 String sourceName = "test_db";
-                List<String> queries = Arrays.asList(
-                                "SELECT * FROM users",
-                                "SELECT * FROM orders");
+                String query = "SELECT * FROM users";
+                String tableName = "test_table";
 
-                // Mock response for first query
+                // Mock response
                 server.enqueue(new MockResponse()
                                 .setResponseCode(200)
-                                .setBody("{\"chip_id\": \"chip1\"}"));
-
-                // Mock response for second query
-                server.enqueue(new MockResponse()
-                                .setResponseCode(200)
-                                .setBody("{\"chip_id\": \"chip2\"}"));
+                                .setBody("{\"chip_id\": \"chip1\", \"error\": null}"));
 
                 // Execute test
-                List<String> chipIds = client.stageData(sourceName, queries, "test_table");
+                String chipId = client.stageData(sourceName, query, tableName);
 
                 // Verify results
-                assertEquals(2, chipIds.size());
-                assertEquals("chip1", chipIds.get(0));
-                assertEquals("chip2", chipIds.get(1));
+                assertEquals("chip1", chipId);
 
-                // Verify requests
-                assertEquals(2, server.getRequestCount());
-                String request1 = server.takeRequest().getBody().readUtf8();
-                String request2 = server.takeRequest().getBody().readUtf8();
-
-                assertTrue(request1.contains("\"source_type\":\"MYSQL\""));
-                assertTrue(request1.contains("\"query\":\"SELECT * FROM users\""));
-                assertTrue(request1.contains("\"database_name\":\"test_db\""));
-                assertTrue(request1.contains("\"table_name\":\"test_table\""));
-
-                assertTrue(request2.contains("\"source_type\":\"MYSQL\""));
-                assertTrue(request2.contains("\"query\":\"SELECT * FROM orders\""));
-                assertTrue(request2.contains("\"database_name\":\"test_db\""));
-                assertTrue(request2.contains("\"table_name\":\"test_table\""));
+                // Verify request
+                assertEquals(1, server.getRequestCount());
+                String request = server.takeRequest().getBody().readUtf8();
+                assertTrue(request.contains("\"source_type\":\"MYSQL\""));
+                assertTrue(request.contains("\"query\":\"SELECT * FROM users\""));
+                assertTrue(request.contains("\"database_name\":\"test_db\""));
+                assertTrue(request.contains("\"table_name\":\"test_table\""));
         }
 
         @Test
@@ -87,16 +72,16 @@ public class DatalatheClientTest {
                 // Mock response
                 String responseJson = "{\"result\":{" +
                                 "\"0\":{" +
-                                "\"idx\":\"0\"," +
                                 "\"result\":[[\"user1\",\"172\"],[\"user2\",\"173\"]]," +
-                                "\"schema\":[{\"name\":\"id\",\"data_type\":\"Utf8\"},{\"name\":\"companyId\",\"data_type\":\"Int32\"}]"
+                                "\"schema\":[{\"name\":\"id\",\"data_type\":\"Utf8\"},{\"name\":\"companyId\",\"data_type\":\"Int32\"}],"
                                 +
+                                "\"error\":null" +
                                 "}," +
                                 "\"1\":{" +
-                                "\"idx\":\"1\"," +
                                 "\"result\":[[\"order1\",\"100\"],[\"order2\",\"200\"]]," +
-                                "\"schema\":[{\"name\":\"id\",\"data_type\":\"Utf8\"},{\"name\":\"amount\",\"data_type\":\"Int32\"}]"
+                                "\"schema\":[{\"name\":\"id\",\"data_type\":\"Utf8\"},{\"name\":\"amount\",\"data_type\":\"Int32\"}],"
                                 +
+                                "\"error\":null" +
                                 "}" +
                                 "}}";
 
@@ -149,8 +134,9 @@ public class DatalatheClientTest {
                 // Mock response with error
                 String responseJson = "{\"result\":{" +
                                 "\"0\":{" +
-                                "\"idx\":\"0\"," +
-                                "\"error\":\"Table not found\"" +
+                                "\"error\":\"Table not found\"," +
+                                "\"result\":null," +
+                                "\"schema\":null" +
                                 "}" +
                                 "}}";
 

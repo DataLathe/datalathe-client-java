@@ -1,5 +1,6 @@
 package com.datalathe.client.model;
 
+import com.datalathe.client.command.impl.GenerateReportCommand.GenerateReportResponse.GenericResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -18,30 +19,30 @@ class DatalatheResultSetTest {
     void setUp() {
         // Create test data
         List<List<String>> data = new ArrayList<>();
-        List<ReportResponse.Schema> schema = new ArrayList<>();
+        List<Schema> schema = new ArrayList<>();
 
         // Add schema
-        ReportResponse.Schema idSchema = new ReportResponse.Schema();
+        Schema idSchema = new Schema();
         idSchema.setName("id");
         idSchema.setDataType("Int32");
         schema.add(idSchema);
 
-        ReportResponse.Schema nameSchema = new ReportResponse.Schema();
+        Schema nameSchema = new Schema();
         nameSchema.setName("name");
         nameSchema.setDataType("Utf8");
         schema.add(nameSchema);
 
-        ReportResponse.Schema ageSchema = new ReportResponse.Schema();
+        Schema ageSchema = new Schema();
         ageSchema.setName("age");
         ageSchema.setDataType("Int32");
         schema.add(ageSchema);
 
-        ReportResponse.Schema activeSchema = new ReportResponse.Schema();
+        Schema activeSchema = new Schema();
         activeSchema.setName("active");
         activeSchema.setDataType("Boolean");
         schema.add(activeSchema);
 
-        ReportResponse.Schema scoreSchema = new ReportResponse.Schema();
+        Schema scoreSchema = new Schema();
         scoreSchema.setName("score");
         scoreSchema.setDataType("Float64");
         schema.add(scoreSchema);
@@ -73,7 +74,7 @@ class DatalatheResultSetTest {
         data.add(row3);
 
         // Create GenericResult
-        ReportResponse.GenericResult result = new ReportResponse.GenericResult();
+        GenericResult result = new GenericResult();
         result.setResult(data);
         result.setSchema(schema);
 
@@ -283,7 +284,7 @@ class DatalatheResultSetTest {
 
     @Test
     void testEmptyResultSet() throws SQLException {
-        ReportResponse.GenericResult emptyResult = new ReportResponse.GenericResult();
+        GenericResult emptyResult = new GenericResult();
         emptyResult.setResult(new ArrayList<>());
         emptyResult.setSchema(new ArrayList<>());
 
