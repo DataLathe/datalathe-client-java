@@ -7,12 +7,14 @@ import com.datalathe.client.command.impl.CreateChipCommand;
 import com.datalathe.client.command.impl.GenerateReportCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
-import java.sql.ResultSet;
 import java.util.*;
 
 public class DatalatheClient {
+    private static final Logger logger = LogManager.getLogger(DatalatheClient.class);
     private final String baseUrl;
     private final OkHttpClient client;
     private final ObjectMapper objectMapper;
@@ -94,8 +96,8 @@ public class DatalatheClient {
                 .post(RequestBody.create(objectMapper.writeValueAsString(command.getRequest()), JSON))
                 .build();
 
-        System.out.println("Sending command: " + httpRequest.url());
-        System.out.println("Command: " + objectMapper.writeValueAsString(command.getRequest()));
+        logger.debug("Sending command: {}", httpRequest.url());
+        logger.debug("Command: {}", objectMapper.writeValueAsString(command.getRequest()));
 
         try (Response response = client.newCall(httpRequest).execute()) {
             if (!response.isSuccessful()) {
@@ -116,23 +118,19 @@ public class DatalatheClient {
      * @return Map of query index to ResultSet
      * @throws IOException if the API call fails
      */
-    public Map<Integer, ResultSet> query(List<String> chipIds, List<String> queries) throws IOException {
-        Map<Integer, ResultSet> results = new HashMap<>();
+    public Map<Integer, GenerateReportCommand.Response.Result> query(List<String> chipIds,
+            List<String> queries) throws IOException {
+        Map<Integer, GenerateReportCommand.Response.Result> results = new HashMap<>();
 
         ReportRequest request = new ReportRequest(chipIds, SourceType.LOCAL, new SourceRequest(queries));
-        GenerateReportCommand.GenerateReportResponse response = sendCommand(new GenerateReportCommand(request));
+        GenerateReportCommand.Response response = sendCommand(new GenerateReportCommand(request));
 
         if (response.getResult() != null) {
-            for (Map.Entry<String, GenerateReportCommand.GenerateReportResponse.GenericResult> entry : response
+            for (Map.Entry<String, GenerateReportCommand.Response.Result> entry : response
                     .getResult().entrySet()) {
                 int idx = Integer.parseInt(entry.getKey());
-                GenerateReportCommand.GenerateReportResponse.GenericResult result = entry.getValue();
-                if (result.getError() == null) {
-                    results.put(idx, new DatalatheResultSet(result));
-                } else {
-                    System.out.println("Error: " + result.getError());
-                }
-
+                GenerateReportCommand.Response.Result result = entry.getValue();
+                results.put(idx, result);
             }
         }
 

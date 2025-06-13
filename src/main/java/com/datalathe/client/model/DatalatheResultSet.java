@@ -1,6 +1,6 @@
 package com.datalathe.client.model;
 
-import com.datalathe.client.command.impl.GenerateReportCommand.GenerateReportResponse.GenericResult;
+import com.datalathe.client.command.impl.GenerateReportCommand.Response.Result;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
@@ -13,7 +13,7 @@ public class DatalatheResultSet extends AbstractResultSet {
     private int currentRow = -1;
     private boolean wasNull = false;
 
-    public DatalatheResultSet(GenericResult result) {
+    public DatalatheResultSet(Result result) {
         this.data = result.getResult();
         this.schema = result.getSchema();
     }

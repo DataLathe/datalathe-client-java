@@ -1,5 +1,6 @@
 package com.datalathe.client;
 
+import com.datalathe.client.command.impl.GenerateReportCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -90,13 +91,14 @@ public class DatalatheClientTest {
                                 .setBody(responseJson));
 
                 // Execute test
-                Map<Integer, ResultSet> results = client.query(chipIds, queries);
+                Map<Integer, GenerateReportCommand.Response.Result> results = client.query(chipIds,
+                                queries);
 
                 // Verify results
                 assertEquals(2, results.size());
 
                 // Verify first result set
-                ResultSet rs1 = results.get(0);
+                ResultSet rs1 = results.get(0).getResultSet();
                 assertNotNull(rs1);
                 assertTrue(rs1.next());
                 assertEquals("user1", rs1.getString(1));
@@ -107,7 +109,7 @@ public class DatalatheClientTest {
                 assertFalse(rs1.next());
 
                 // Verify second result set
-                ResultSet rs2 = results.get(1);
+                ResultSet rs2 = results.get(1).getResultSet();
                 assertNotNull(rs2);
                 assertTrue(rs2.next());
                 assertEquals("order1", rs2.getString(1));
@@ -145,7 +147,8 @@ public class DatalatheClientTest {
                                 .setBody(responseJson));
 
                 // Execute test
-                Map<Integer, ResultSet> results = client.query(chipIds, queries);
+                Map<Integer, GenerateReportCommand.Response.Result> results = client.query(chipIds,
+                                queries);
 
                 // Verify results - should be empty since the result had an error
                 assertTrue(results.isEmpty());
