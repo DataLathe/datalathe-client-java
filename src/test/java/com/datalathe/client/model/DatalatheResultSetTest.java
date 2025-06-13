@@ -1,6 +1,6 @@
 package com.datalathe.client.model;
 
-import com.datalathe.client.command.impl.GenerateReportCommand.GenerateReportResponse.GenericResult;
+import com.datalathe.client.command.impl.GenerateReportCommand.Response.Result;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -74,7 +74,7 @@ class DatalatheResultSetTest {
         data.add(row3);
 
         // Create GenericResult
-        GenericResult result = new GenericResult();
+        Result result = new Result();
         result.setResult(data);
         result.setSchema(schema);
 
@@ -284,7 +284,7 @@ class DatalatheResultSetTest {
 
     @Test
     void testEmptyResultSet() throws SQLException {
-        GenericResult emptyResult = new GenericResult();
+        Result emptyResult = new Result();
         emptyResult.setResult(new ArrayList<>());
         emptyResult.setSchema(new ArrayList<>());
 

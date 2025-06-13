@@ -1,6 +1,7 @@
 package com.datalathe.client.examples;
 
 import com.datalathe.client.DatalatheClient;
+import com.datalathe.client.command.impl.GenerateReportCommand;
 import com.datalathe.client.model.StageDataSourceRequest;
 
 import java.io.IOException;
@@ -32,11 +33,13 @@ public class DatalatheClientExample {
                 "SELECT u.user_id, COUNT(o.order_id) as order_count FROM users u LEFT JOIN orders o ON u.user_id = o.user_id GROUP BY u.user_id",
                 "SELECT user_id, total_amount FROM orders WHERE status = 'completed'");
 
-        Map<Integer, ResultSet> results = client.query(chipIds, analysisQueries);
+        Map<Integer, GenerateReportCommand.Response.Result> results = client.query(chipIds,
+                analysisQueries);
 
         // Print results
-        for (Map.Entry<Integer, ResultSet> entry : results.entrySet()) {
-            ResultSet rs = entry.getValue();
+        for (Map.Entry<Integer, GenerateReportCommand.Response.Result> entry : results
+                .entrySet()) {
+            ResultSet rs = entry.getValue().getResultSet();
             ResultSetMetaData metaData = rs.getMetaData();
             int columnCount = metaData.getColumnCount();
 
@@ -67,8 +70,9 @@ public class DatalatheClientExample {
         List<String> queries = Collections.singletonList(
                 "SELECT id, name, age, salary, is_active, created_at, score FROM mixed_data_types");
 
-        Map<Integer, ResultSet> results = client.query(Collections.singletonList(chipId), queries);
-        ResultSet rs = results.get(0);
+        Map<Integer, GenerateReportCommand.Response.Result> results = client
+                .query(Collections.singletonList(chipId), queries);
+        ResultSet rs = results.get(0).getResultSet();
 
         System.out.println("\nDemonstrating different data types:");
         System.out.println("----------------------------------------");

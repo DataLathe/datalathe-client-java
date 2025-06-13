@@ -2,9 +2,12 @@ package com.datalathe.client.command.impl;
 
 import com.datalathe.client.command.DatalatheCommand;
 import com.datalathe.client.command.DatalatheCommandResponse;
+import com.datalathe.client.model.DatalatheResultSet;
 import com.datalathe.client.model.ReportRequest;
 import com.datalathe.client.model.Schema;
 import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.sql.ResultSet;
 import java.util.List;
 import java.util.Map;
 
@@ -27,22 +30,22 @@ public class GenerateReportCommand implements DatalatheCommand {
 
     @Override
     public DatalatheCommandResponse getResponseType() {
-        return new GenerateReportResponse();
+        return new Response();
     }
 
-    public static class GenerateReportResponse implements DatalatheCommandResponse {
+    public static class Response implements DatalatheCommandResponse {
         @JsonProperty("result")
-        private Map<String, GenericResult> result;
+        private Map<String, Result> result;
 
-        public Map<String, GenericResult> getResult() {
+        public Map<String, Result> getResult() {
             return result;
         }
 
-        public void setResult(Map<String, GenericResult> result) {
+        public void setResult(Map<String, Result> result) {
             this.result = result;
         }
 
-        public static class GenericResult {
+        public static class Result {
             @JsonProperty("error")
             private String error;
 
@@ -96,6 +99,10 @@ public class GenerateReportCommand implements DatalatheCommand {
 
             public void setIdx(String idx) {
                 this.idx = idx;
+            }
+
+            public ResultSet getResultSet() {
+                return new DatalatheResultSet(this);
             }
         }
     }
