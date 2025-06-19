@@ -3,18 +3,23 @@ package com.datalathe.client.command.impl;
 import com.datalathe.client.command.DatalatheCommand;
 import com.datalathe.client.command.DatalatheCommandResponse;
 import com.datalathe.client.model.DatalatheResultSet;
-import com.datalathe.client.model.ReportRequest;
+import com.datalathe.client.model.ReportType;
 import com.datalathe.client.model.Schema;
+import com.datalathe.client.model.SourceType;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.sql.ResultSet;
 import java.util.List;
 import java.util.Map;
 
 public class GenerateReportCommand implements DatalatheCommand {
-    private final ReportRequest request;
+    private final Request request;
 
-    public GenerateReportCommand(ReportRequest request) {
+    public GenerateReportCommand(Request request) {
         this.request = request;
     }
 
@@ -24,7 +29,7 @@ public class GenerateReportCommand implements DatalatheCommand {
     }
 
     @Override
-    public Object getRequest() {
+    public Request getRequest() {
         return request;
     }
 
@@ -33,18 +38,53 @@ public class GenerateReportCommand implements DatalatheCommand {
         return new Response();
     }
 
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class Request {
+        @JsonProperty("chip_id")
+        private List<String> chipIds;
+
+        @JsonProperty("source_type")
+        private SourceType sourceType;
+
+        @JsonProperty("type")
+        private ReportType reportType = ReportType.GENERIC;
+
+        @JsonProperty("query_request")
+        private Queries queryRequest;
+
+        public Request(List<String> chipIds, SourceType sourceType, Queries queryRequest) {
+            this.chipIds = chipIds;
+            this.sourceType = sourceType;
+            this.queryRequest = queryRequest;
+        }
+
+        @Data
+        @NoArgsConstructor
+        @AllArgsConstructor
+        public static class Queries {
+            @JsonProperty("query")
+            private List<String> query;
+
+            @JsonProperty("file_path")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            private String filePath;
+
+            public Queries(List<String> query) {
+                this.query = query;
+            }
+        }
+    }
+
+    @Data
+    @NoArgsConstructor
     public static class Response implements DatalatheCommandResponse {
         @JsonProperty("result")
         private Map<String, Result> result;
 
-        public Map<String, Result> getResult() {
-            return result;
-        }
-
-        public void setResult(Map<String, Result> result) {
-            this.result = result;
-        }
-
+        @Data
+        @NoArgsConstructor
         public static class Result {
             @JsonProperty("error")
             private String error;
@@ -60,46 +100,6 @@ public class GenerateReportCommand implements DatalatheCommand {
 
             @JsonProperty("idx")
             private String idx;
-
-            public String getError() {
-                return error;
-            }
-
-            public void setError(String error) {
-                this.error = error;
-            }
-
-            public List<List<String>> getData() {
-                return data;
-            }
-
-            public void setData(List<List<String>> data) {
-                this.data = data;
-            }
-
-            public List<List<String>> getResult() {
-                return result;
-            }
-
-            public void setResult(List<List<String>> result) {
-                this.result = result;
-            }
-
-            public List<Schema> getSchema() {
-                return schema;
-            }
-
-            public void setSchema(List<Schema> schema) {
-                this.schema = schema;
-            }
-
-            public String getIdx() {
-                return idx;
-            }
-
-            public void setIdx(String idx) {
-                this.idx = idx;
-            }
 
             public ResultSet getResultSet() {
                 return new DatalatheResultSet(this);

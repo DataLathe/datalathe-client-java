@@ -1,8 +1,8 @@
 package com.datalathe.client.examples;
 
 import com.datalathe.client.DatalatheClient;
+import com.datalathe.client.command.impl.CreateChipCommand;
 import com.datalathe.client.command.impl.GenerateReportCommand;
-import com.datalathe.client.model.StageDataSourceRequest;
 
 import java.io.IOException;
 import java.sql.ResultSet;
@@ -19,12 +19,13 @@ public class DatalatheClientExample {
 
     public void runExample() throws IOException, SQLException {
         // Stage data from multiple tables
-        List<StageDataSourceRequest> stageQueries = Arrays.asList(
-                new StageDataSourceRequest("my_database", "users",
+        List<CreateChipCommand.Request.Source> stageQueries = Arrays.asList(
+                new CreateChipCommand.Request.Source("my_database", "users",
                         "SELECT * FROM users WHERE created_at > '2024-01-01'"),
-                new StageDataSourceRequest("my_database", "orders", "SELECT * FROM orders WHERE status = 'completed'"));
+                new CreateChipCommand.Request.Source("my_database", "orders",
+                        "SELECT * FROM orders WHERE status = 'completed'"));
 
-        List<String> chipIds = client.stageData(stageQueries);
+        List<String> chipIds = client.createChips(stageQueries);
         System.out.println("Staged data with chip IDs: " + chipIds);
 
         // Example queries
@@ -33,7 +34,7 @@ public class DatalatheClientExample {
                 "SELECT u.user_id, COUNT(o.order_id) as order_count FROM users u LEFT JOIN orders o ON u.user_id = o.user_id GROUP BY u.user_id",
                 "SELECT user_id, total_amount FROM orders WHERE status = 'completed'");
 
-        Map<Integer, GenerateReportCommand.Response.Result> results = client.query(chipIds,
+        Map<Integer, GenerateReportCommand.Response.Result> results = client.generateReport(chipIds,
                 analysisQueries);
 
         // Print results
@@ -65,13 +66,13 @@ public class DatalatheClientExample {
     }
 
     public void demonstrateDataTypes() throws IOException, SQLException {
-        String chipId = client.stageData("my_database", "SELECT * FROM mixed_data_types", "mixed_data_types");
+        String chipId = client.createChip("my_database", "SELECT * FROM mixed_data_types", "mixed_data_types");
 
         List<String> queries = Collections.singletonList(
                 "SELECT id, name, age, salary, is_active, created_at, score FROM mixed_data_types");
 
         Map<Integer, GenerateReportCommand.Response.Result> results = client
-                .query(Collections.singletonList(chipId), queries);
+                .generateReport(Collections.singletonList(chipId), queries);
         ResultSet rs = results.get(0).getResultSet();
 
         System.out.println("\nDemonstrating different data types:");
