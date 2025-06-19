@@ -1,4 +1,4 @@
-package com.datalathe.client.model;
+package com.datalathe.client.types;
 
 public enum SourceType {
     MYSQL,
@@ -6,4 +6,4 @@ public enum SourceType {
     S3,
     LOCAL,
     CACHE
-} 
+}

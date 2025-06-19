@@ -1,4 +1,4 @@
-package com.datalathe.client.model;
+package com.datalathe.client.results;
 
 import com.datalathe.client.command.impl.GenerateReportCommand.Response.Result;
 import java.sql.ResultSetMetaData;

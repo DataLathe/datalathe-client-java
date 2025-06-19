@@ -4,7 +4,7 @@ import java.util.List;
 
 import com.datalathe.client.command.DatalatheCommand;
 import com.datalathe.client.command.DatalatheCommandResponse;
-import com.datalathe.client.model.SourceType;
+import com.datalathe.client.types.SourceType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
