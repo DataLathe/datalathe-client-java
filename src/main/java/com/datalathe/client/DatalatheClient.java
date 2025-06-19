@@ -6,6 +6,7 @@ import com.datalathe.client.command.DatalatheCommandResponse;
 import com.datalathe.client.command.impl.CreateChipCommand;
 import com.datalathe.client.command.impl.GenerateReportCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import okhttp3.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -13,18 +14,13 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.util.*;
 
+@RequiredArgsConstructor
 public class DatalatheClient {
     private static final Logger logger = LogManager.getLogger(DatalatheClient.class);
     private final String baseUrl;
-    private final OkHttpClient client;
-    private final ObjectMapper objectMapper;
+    private final OkHttpClient client = new OkHttpClient();
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
-
-    public DatalatheClient(String baseUrl) {
-        this.baseUrl = baseUrl;
-        this.client = new OkHttpClient();
-        this.objectMapper = new ObjectMapper();
-    }
 
     /**
      * Stages data from a SQL query and returns a chip ID

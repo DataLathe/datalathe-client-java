@@ -3,6 +3,7 @@ package com.datalathe.client.examples;
 import com.datalathe.client.DatalatheClient;
 import com.datalathe.client.command.impl.CreateChipCommand;
 import com.datalathe.client.command.impl.GenerateReportCommand;
+import lombok.RequiredArgsConstructor;
 
 import java.io.IOException;
 import java.sql.ResultSet;
@@ -10,12 +11,9 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.*;
 
+@RequiredArgsConstructor
 public class DatalatheClientExample {
     private final DatalatheClient client;
-
-    public DatalatheClientExample(String baseUrl) {
-        this.client = new DatalatheClient(baseUrl);
-    }
 
     public void runExample() throws IOException, SQLException {
         // Stage data from multiple tables
@@ -92,7 +90,8 @@ public class DatalatheClientExample {
 
     public static void main(String[] args) {
         String baseUrl = "http://localhost:8080";
-        DatalatheClientExample example = new DatalatheClientExample(baseUrl);
+        DatalatheClient client = new DatalatheClient(baseUrl);
+        DatalatheClientExample example = new DatalatheClientExample(client);
 
         try {
             example.runExample();
