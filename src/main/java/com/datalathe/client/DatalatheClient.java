@@ -23,28 +23,14 @@ public class DatalatheClient {
     private final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 
     /**
-     * Stages data from a SQL query and returns a chip ID
+     * Creates a chip from a source request
      * 
      * @param sourceName The name of the source database
      * @param query      The SQL query to execute
      * @param tableName  The name of the table
-     * @param chipId     Optional chip ID to use
      * @return The chip ID
      * @throws IOException if the API call fails
      */
-    public String stageData(String sourceName, String query, String tableName, String chipId)
-            throws IOException {
-        CreateChipCommand.Request.Source source = new CreateChipCommand.Request.Source(sourceName, tableName, query);
-        CreateChipCommand.Request request = new CreateChipCommand.Request(SourceType.MYSQL, source);
-        request.setChipId(chipId);
-
-        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
-        if (response.getError() != null) {
-            throw new IOException("Failed to stage data: " + response.getError());
-        }
-        return response.getChipId();
-    }
-
     public String createChip(String sourceName, String query, String tableName) throws IOException {
         return createChips(
                 Collections.singletonList(new CreateChipCommand.Request.Source(sourceName, tableName, query)), null)
