@@ -1,4 +1,4 @@
-package com.datalathe.client.model;
+package com.datalathe.client.types;
 
 import com.fasterxml.jackson.annotation.JsonValue;
 

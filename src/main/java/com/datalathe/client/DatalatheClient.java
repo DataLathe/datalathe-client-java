@@ -1,6 +1,6 @@
 package com.datalathe.client;
 
-import com.datalathe.client.model.*;
+import com.datalathe.client.types.SourceType;
 import com.datalathe.client.command.DatalatheCommand;
 import com.datalathe.client.command.DatalatheCommandResponse;
 import com.datalathe.client.command.impl.CreateChipCommand;

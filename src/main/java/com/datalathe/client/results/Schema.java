@@ -1,4 +1,4 @@
-package com.datalathe.client.model;
+package com.datalathe.client.results;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 

@@ -2,10 +2,10 @@ package com.datalathe.client.command.impl;
 
 import com.datalathe.client.command.DatalatheCommand;
 import com.datalathe.client.command.DatalatheCommandResponse;
-import com.datalathe.client.model.DatalatheResultSet;
-import com.datalathe.client.model.ReportType;
-import com.datalathe.client.model.Schema;
-import com.datalathe.client.model.SourceType;
+import com.datalathe.client.results.DatalatheResultSet;
+import com.datalathe.client.results.Schema;
+import com.datalathe.client.types.ReportType;
+import com.datalathe.client.types.SourceType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
@@ -105,5 +105,6 @@ public class GenerateReportCommand implements DatalatheCommand {
                 return new DatalatheResultSet(this);
             }
         }
+
     }
 }

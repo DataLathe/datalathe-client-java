@@ -1,4 +1,5 @@
-package com.datalathe.client.model;
+package com.datalathe.client.results;
+
 import java.io.InputStream;
 import java.io.Reader;
 import java.math.BigDecimal;
@@ -22,11 +23,12 @@ import java.util.Calendar;
 import java.util.Map;
 
 /**
- * Wrapper for java.sql.ResultSet. All methods throw UnsupportedOperationException.
+ * Wrapper for java.sql.ResultSet. All methods throw
+ * UnsupportedOperationException.
  * 
  * @author jvilaca@gmail.com
  */
-public abstract class AbstractResultSet implements ResultSet{
+public abstract class AbstractResultSet implements ResultSet {
 
     @Override
     public boolean isWrapperFor(Class<?> iface) throws SQLException {
