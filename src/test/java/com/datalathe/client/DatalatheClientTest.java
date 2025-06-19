@@ -48,7 +48,7 @@ public class DatalatheClientTest {
                                 .setBody("{\"chip_id\": \"chip1\", \"error\": null}"));
 
                 // Execute test
-                String chipId = client.stageData(sourceName, query, tableName);
+                String chipId = client.createChip(sourceName, query, tableName);
 
                 // Verify results
                 assertEquals("chip1", chipId);
@@ -91,7 +91,7 @@ public class DatalatheClientTest {
                                 .setBody(responseJson));
 
                 // Execute test
-                Map<Integer, GenerateReportCommand.Response.Result> results = client.query(chipIds,
+                Map<Integer, GenerateReportCommand.Response.Result> results = client.generateReport(chipIds,
                                 queries);
 
                 // Verify results
@@ -147,7 +147,7 @@ public class DatalatheClientTest {
                                 .setBody(responseJson));
 
                 // Execute test
-                Map<Integer, GenerateReportCommand.Response.Result> results = client.query(chipIds,
+                Map<Integer, GenerateReportCommand.Response.Result> results = client.generateReport(chipIds,
                                 queries);
 
                 // Verify results - should be empty since the result had an error

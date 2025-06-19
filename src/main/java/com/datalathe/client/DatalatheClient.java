@@ -38,19 +38,21 @@ public class DatalatheClient {
      */
     public String stageData(String sourceName, String query, String tableName, String chipId)
             throws IOException {
-        StageDataSourceRequest sourceRequest = new StageDataSourceRequest(sourceName, tableName, query);
-        StageDataRequest request = new StageDataRequest(SourceType.MYSQL, sourceRequest);
+        CreateChipCommand.Request.Source source = new CreateChipCommand.Request.Source(sourceName, tableName, query);
+        CreateChipCommand.Request request = new CreateChipCommand.Request(SourceType.MYSQL, source);
         request.setChipId(chipId);
 
-        CreateChipCommand.CreateChipResponse response = sendCommand(new CreateChipCommand(request));
+        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
         if (response.getError() != null) {
             throw new IOException("Failed to stage data: " + response.getError());
         }
         return response.getChipId();
     }
 
-    public String stageData(String sourceName, String query, String tableName) throws IOException {
-        return stageData(sourceName, query, tableName, null);
+    public String createChip(String sourceName, String query, String tableName) throws IOException {
+        return createChips(
+                Collections.singletonList(new CreateChipCommand.Request.Source(sourceName, tableName, query)), null)
+                .get(0);
     }
 
     /**
@@ -61,16 +63,16 @@ public class DatalatheClient {
      * @return List of chip IDs
      * @throws IOException if any API call fails
      */
-    public List<String> stageData(List<StageDataSourceRequest> sourceRequests, String chipId) throws IOException {
-        StageDataRequest requestBase = new StageDataRequest();
+    public List<String> createChips(List<CreateChipCommand.Request.Source> sources, String chipId) throws IOException {
+        CreateChipCommand.Request requestBase = new CreateChipCommand.Request();
         requestBase.setSourceType(SourceType.MYSQL);
         requestBase.setChipId(chipId);
 
         List<String> chipIds = new ArrayList<>();
-        for (StageDataSourceRequest sourceRequest : sourceRequests) {
-            StageDataRequest request = new StageDataRequest(requestBase);
-            request.setSourceRequest(sourceRequest);
-            CreateChipCommand.CreateChipResponse response = sendCommand(new CreateChipCommand(request));
+        for (CreateChipCommand.Request.Source source : sources) {
+            CreateChipCommand.Request request = new CreateChipCommand.Request(requestBase);
+            request.setSource(source);
+            CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
             if (response.getError() != null) {
                 throw new IOException("Failed to stage data: " + response.getError());
             }
@@ -79,8 +81,8 @@ public class DatalatheClient {
         return chipIds;
     }
 
-    public List<String> stageData(List<StageDataSourceRequest> sourceRequests) throws IOException {
-        return stageData(sourceRequests, null);
+    public List<String> createChips(List<CreateChipCommand.Request.Source> sources) throws IOException {
+        return createChips(sources, null);
     }
 
     /**
@@ -118,11 +120,15 @@ public class DatalatheClient {
      * @return Map of query index to ResultSet
      * @throws IOException if the API call fails
      */
-    public Map<Integer, GenerateReportCommand.Response.Result> query(List<String> chipIds,
+    public Map<Integer, GenerateReportCommand.Response.Result> generateReport(List<String> chipIds,
             List<String> queries) throws IOException {
         Map<Integer, GenerateReportCommand.Response.Result> results = new HashMap<>();
 
-        ReportRequest request = new ReportRequest(chipIds, SourceType.LOCAL, new SourceRequest(queries));
+        GenerateReportCommand.Request request = new GenerateReportCommand.Request();
+        request.setSourceType(SourceType.LOCAL);
+        request.setQueryRequest(new GenerateReportCommand.Request.Queries(queries));
+        request.setChipIds(chipIds);
+
         GenerateReportCommand.Response response = sendCommand(new GenerateReportCommand(request));
 
         if (response.getResult() != null) {
