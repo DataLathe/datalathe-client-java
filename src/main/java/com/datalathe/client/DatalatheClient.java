@@ -24,7 +24,7 @@ public class DatalatheClient {
 
     /**
      * Creates a chip from a source request
-     * 
+     *
      * @param sourceName The name of the source database
      * @param query      The SQL query to execute
      * @param tableName  The name of the table
@@ -32,16 +32,41 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public String createChip(String sourceName, String query, String tableName) throws IOException {
-        return createChips(
-                Collections.singletonList(new CreateChipCommand.Request.Source(sourceName, tableName, query)), null)
-                .get(0);
+        return createChip(sourceName, query, tableName, null);
+    }
+
+    /**
+     * Creates a chip from a source request with partition configuration
+     *
+     * @param sourceName The name of the source database
+     * @param query      The SQL query to execute
+     * @param tableName  The name of the table
+     * @param partition  Optional partition configuration
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChip(String sourceName, String query, String tableName,
+            CreateChipCommand.Request.Source.Partition partition) throws IOException {
+        CreateChipCommand.Request request = new CreateChipCommand.Request();
+        request.setSourceType(SourceType.MYSQL);
+        request.setSource(CreateChipCommand.Request.Source.builder()
+                .databaseName(sourceName)
+                .tableName(tableName)
+                .query(query)
+                .partition(partition)
+                .build());
+        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
+        if (response.getError() != null) {
+            throw new IOException("Failed to stage data: " + response.getError());
+        }
+        return response.getChipId();
     }
 
     /**
      * Stages data from multiple source requests and returns a list of chip IDs
      * 
-     * @param sourceRequests List of source requests to process
-     * @param chipId         Optional chip ID to use
+     * @param sources List of source requests to process
+     * @param chipId  Optional chip ID to use
      * @return List of chip IDs
      * @throws IOException if any API call fails
      */
@@ -61,6 +86,43 @@ public class DatalatheClient {
             chipIds.add(response.getChipId());
         }
         return chipIds;
+    }
+
+    /**
+     * Creates a chip from a file source (CSV, Parquet, etc.)
+     *
+     * @param filePath  Path to the file on the server
+     * @param tableName Optional table name for the chip
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChipFromFile(String filePath, String tableName) throws IOException {
+        return createChipFromFile(filePath, tableName, null);
+    }
+
+    /**
+     * Creates a chip from a file source with partition configuration
+     *
+     * @param filePath  Path to the file on the server
+     * @param tableName Optional table name for the chip
+     * @param partition Optional partition configuration
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChipFromFile(String filePath, String tableName,
+            CreateChipCommand.Request.Source.Partition partition) throws IOException {
+        CreateChipCommand.Request request = new CreateChipCommand.Request();
+        request.setSourceType(SourceType.FILE);
+        request.setSource(CreateChipCommand.Request.Source.builder()
+                .filePath(filePath)
+                .tableName(tableName)
+                .partition(partition)
+                .build());
+        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
+        if (response.getError() != null) {
+            throw new IOException("Failed to stage file: " + response.getError());
+        }
+        return response.getChipId();
     }
 
     public List<String> createChips(List<CreateChipCommand.Request.Source> sources) throws IOException {
