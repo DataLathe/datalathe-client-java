@@ -18,10 +18,16 @@ public class DatalatheClientExample {
     public void runExample() throws IOException, SQLException {
         // Stage data from multiple tables
         List<CreateChipCommand.Request.Source> stageQueries = Arrays.asList(
-                new CreateChipCommand.Request.Source("my_database", "users",
-                        "SELECT * FROM users WHERE created_at > '2024-01-01'"),
-                new CreateChipCommand.Request.Source("my_database", "orders",
-                        "SELECT * FROM orders WHERE status = 'completed'"));
+                CreateChipCommand.Request.Source.builder()
+                        .databaseName("my_database")
+                        .tableName("users")
+                        .query("SELECT * FROM users WHERE created_at > '2024-01-01'")
+                        .build(),
+                CreateChipCommand.Request.Source.builder()
+                        .databaseName("my_database")
+                        .tableName("orders")
+                        .query("SELECT * FROM orders WHERE status = 'completed'")
+                        .build());
 
         List<String> chipIds = client.createChips(stageQueries);
         System.out.println("Staged data with chip IDs: " + chipIds);
@@ -88,6 +94,46 @@ public class DatalatheClientExample {
         rs.close();
     }
 
+    /**
+     * Example: stage data with a partition (e.g. by region or date) so only
+     * selected partition values are loaded.
+     */
+    public void demonstratePartition() throws IOException, SQLException {
+        CreateChipCommand.Request.Source source = CreateChipCommand.Request.Source.builder()
+                .databaseName("my_database")
+                .tableName("orders")
+                .query("SELECT * FROM orders WHERE status = 'completed'")
+                .partition(CreateChipCommand.Request.Source.Partition.builder()
+                        .partitionBy("region")
+                        .partitionValues(Arrays.asList("US", "EU"))
+                        .combinePartitions(true)
+                        .build())
+                .build();
+
+        List<String> chipIds = client.createChips(Collections.singletonList(source));
+        System.out.println("Staged partitioned data with chip ID: " + chipIds.get(0));
+
+        List<String> queries = Collections.singletonList(
+                "SELECT region, COUNT(*) as order_count FROM orders GROUP BY region");
+        Map<Integer, GenerateReportCommand.Response.Result> results = client.generateReport(chipIds, queries);
+        ResultSet rs = results.get(0).getResultSet();
+
+        System.out.println("\nPartitioned query results:");
+        System.out.println("----------------------------------------");
+        ResultSetMetaData metaData = rs.getMetaData();
+        for (int i = 1; i <= metaData.getColumnCount(); i++) {
+            System.out.printf("%-20s", metaData.getColumnName(i));
+        }
+        System.out.println();
+        while (rs.next()) {
+            for (int i = 1; i <= metaData.getColumnCount(); i++) {
+                System.out.printf("%-20s", rs.getObject(i) != null ? rs.getObject(i).toString() : "NULL");
+            }
+            System.out.println();
+        }
+        rs.close();
+    }
+
     public static void main(String[] args) {
         String baseUrl = "http://localhost:8080";
         DatalatheClient client = new DatalatheClient(baseUrl);
@@ -96,6 +142,7 @@ public class DatalatheClientExample {
         try {
             example.runExample();
             example.demonstrateDataTypes();
+            example.demonstratePartition();
         } catch (IOException | SQLException e) {
             System.err.println("Error running example: " + e.getMessage());
             e.printStackTrace();

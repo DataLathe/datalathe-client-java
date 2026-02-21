@@ -8,6 +8,7 @@ import com.datalathe.client.types.SourceType;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -58,6 +59,7 @@ public class CreateChipCommand implements DatalatheCommand {
         }
 
         @Data
+        @Builder
         @NoArgsConstructor
         @AllArgsConstructor
         public static class Source {
@@ -90,6 +92,7 @@ public class CreateChipCommand implements DatalatheCommand {
             }
 
             @Data
+            @Builder
             @NoArgsConstructor
             @AllArgsConstructor
             public static class Partition {
