@@ -242,7 +242,12 @@ public class DatalatheResultSet extends AbstractResultSet {
         if (columnIndex < 1 || columnIndex > schema.size()) {
             throw new SQLException("Invalid column index: " + columnIndex);
         }
-        return data.get(currentRow).get(columnIndex - 1);
+        String value = data.get(currentRow).get(columnIndex - 1);
+        // Treat empty strings as null for numeric/boolean columns
+        if (value != null && value.isEmpty()) {
+            return null;
+        }
+        return value;
     }
 
     @Override
