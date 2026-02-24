@@ -286,6 +286,114 @@ class DatalatheResultSetTest {
     }
 
     @Test
+    void testEmptyStringTreatedAsNull() throws SQLException {
+        // Simulate API returning empty strings for null numeric/boolean values
+        List<List<String>> data = new ArrayList<>();
+        List<Schema> schema = new ArrayList<>();
+
+        Schema intSchema = new Schema();
+        intSchema.setName("count");
+        intSchema.setDataType("Int32");
+        schema.add(intSchema);
+
+        Schema longSchema = new Schema();
+        longSchema.setName("big_count");
+        longSchema.setDataType("Int64");
+        schema.add(longSchema);
+
+        Schema floatSchema = new Schema();
+        floatSchema.setName("ratio");
+        floatSchema.setDataType("Float32");
+        schema.add(floatSchema);
+
+        Schema doubleSchema = new Schema();
+        doubleSchema.setName("amount");
+        doubleSchema.setDataType("Float64");
+        schema.add(doubleSchema);
+
+        Schema boolSchema = new Schema();
+        boolSchema.setName("flag");
+        boolSchema.setDataType("Boolean");
+        schema.add(boolSchema);
+
+        Schema strSchema = new Schema();
+        strSchema.setName("label");
+        strSchema.setDataType("Utf8");
+        schema.add(strSchema);
+
+        // Row with all empty strings
+        List<String> emptyRow = new ArrayList<>();
+        emptyRow.add("");
+        emptyRow.add("");
+        emptyRow.add("");
+        emptyRow.add("");
+        emptyRow.add("");
+        emptyRow.add("");
+        data.add(emptyRow);
+
+        // Row with valid values
+        List<String> validRow = new ArrayList<>();
+        validRow.add("42");
+        validRow.add("9999999999");
+        validRow.add("3.14");
+        validRow.add("99.99");
+        validRow.add("true");
+        validRow.add("hello");
+        data.add(validRow);
+
+        Result result = new Result();
+        result.setResult(data);
+        result.setSchema(schema);
+
+        DatalatheResultSet rs = new DatalatheResultSet(result);
+
+        // First row: all empty strings should behave as null
+        assertTrue(rs.next());
+
+        assertEquals(0, rs.getInt(1));
+        assertTrue(rs.wasNull());
+
+        assertEquals(0L, rs.getLong(2));
+        assertTrue(rs.wasNull());
+
+        assertEquals(0.0f, rs.getFloat(3), 0.001);
+        assertTrue(rs.wasNull());
+
+        assertEquals(0.0, rs.getDouble(4), 0.001);
+        assertTrue(rs.wasNull());
+
+        assertFalse(rs.getBoolean(5));
+        assertTrue(rs.wasNull());
+
+        assertNull(rs.getString(6));
+        assertTrue(rs.wasNull());
+
+        assertNull(rs.getObject(1));
+        assertTrue(rs.wasNull());
+
+        // Second row: valid values should parse fine
+        assertTrue(rs.next());
+
+        assertEquals(42, rs.getInt(1));
+        assertFalse(rs.wasNull());
+
+        assertEquals(9999999999L, rs.getLong(2));
+        assertFalse(rs.wasNull());
+
+        assertEquals(3.14f, rs.getFloat(3), 0.01);
+        assertFalse(rs.wasNull());
+
+        assertEquals(99.99, rs.getDouble(4), 0.001);
+        assertFalse(rs.wasNull());
+
+        assertTrue(rs.getBoolean(5));
+        assertFalse(rs.wasNull());
+
+        assertEquals("hello", rs.getString(6));
+        assertFalse(rs.wasNull());
+    }
+
+    @Test
     void testEmptyResultSet() throws SQLException {
         Result emptyResult = new Result();
         emptyResult.setResult(new ArrayList<>());
