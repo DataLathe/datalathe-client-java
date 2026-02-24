@@ -54,6 +54,14 @@ public class GenerateReportCommand implements DatalatheCommand {
         @JsonProperty("query_request")
         private Queries queryRequest;
 
+        @JsonProperty("transform_query")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private Boolean transformQuery;
+
+        @JsonProperty("return_transformed_query")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private Boolean returnTransformedQuery;
+
         public Request(List<String> chipIds, SourceType sourceType, Queries queryRequest) {
             this.chipIds = chipIds;
             this.sourceType = sourceType;
@@ -83,6 +91,12 @@ public class GenerateReportCommand implements DatalatheCommand {
         @JsonProperty("result")
         private Map<String, Result> result;
 
+        @JsonProperty("error")
+        private String error;
+
+        @JsonProperty("timing")
+        private ReportTiming timing;
+
         @Data
         @NoArgsConstructor
         public static class Result {
@@ -101,10 +115,26 @@ public class GenerateReportCommand implements DatalatheCommand {
             @JsonProperty("idx")
             private String idx;
 
+            @JsonProperty("transformed_query")
+            private String transformedQuery;
+
             public ResultSet getResultSet() {
                 return new DatalatheResultSet(this);
             }
         }
 
+        @Data
+        @NoArgsConstructor
+        @AllArgsConstructor
+        public static class ReportTiming {
+            @JsonProperty("total_ms")
+            private long totalMs;
+
+            @JsonProperty("chip_attach_ms")
+            private long chipAttachMs;
+
+            @JsonProperty("query_execution_ms")
+            private long queryExecutionMs;
+        }
     }
 }

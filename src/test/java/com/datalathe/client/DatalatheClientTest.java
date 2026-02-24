@@ -150,7 +150,71 @@ public class DatalatheClientTest {
                 Map<Integer, GenerateReportCommand.Response.Result> results = client.generateReport(chipIds,
                                 queries);
 
-                // Verify results - should be empty since the result had an error
-                assertTrue(results.isEmpty());
+                // Verify results - error entry is still included in results map
+                assertEquals(1, results.size());
+                assertEquals("Table not found", results.get(0).getError());
+                assertNull(results.get(0).getResult());
+        }
+
+        @Test
+        public void testQueryWithTiming() throws Exception {
+                List<String> chipIds = Arrays.asList("chip1");
+                List<String> queries = Arrays.asList("SELECT * FROM users");
+
+                String responseJson = "{\"result\":{" +
+                                "\"0\":{" +
+                                "\"result\":[[\"user1\"]],"+
+                                "\"schema\":[{\"name\":\"id\",\"data_type\":\"Utf8\"}]," +
+                                "\"error\":null" +
+                                "}" +
+                                "}," +
+                                "\"timing\":{\"total_ms\":150,\"chip_attach_ms\":30,\"query_execution_ms\":120}}";
+
+                server.enqueue(new MockResponse()
+                                .setResponseCode(200)
+                                .setBody(responseJson));
+
+                GenerateReportResult reportResult = client.generateReport(chipIds, queries, null, null);
+
+                assertNotNull(reportResult.getTiming());
+                assertEquals(150, reportResult.getTiming().getTotalMs());
+                assertEquals(30, reportResult.getTiming().getChipAttachMs());
+                assertEquals(120, reportResult.getTiming().getQueryExecutionMs());
+                assertEquals(1, reportResult.getResults().size());
+        }
+
+        @Test
+        public void testQueryWithTransformQuery() throws Exception {
+                List<String> chipIds = Arrays.asList("chip1");
+                List<String> queries = Arrays.asList("SELECT IFNULL(name, 'N/A') FROM users");
+
+                String responseJson = "{\"result\":{" +
+                                "\"0\":{" +
+                                "\"result\":[[\"user1\"]],"+
+                                "\"schema\":[{\"name\":\"name\",\"data_type\":\"Utf8\"}]," +
+                                "\"error\":null," +
+                                "\"transformed_query\":\"SELECT COALESCE(name, 'N/A') FROM users\"" +
+                                "}" +
+                                "}," +
+                                "\"timing\":{\"total_ms\":100,\"chip_attach_ms\":20,\"query_execution_ms\":80}}";
+
+                server.enqueue(new MockResponse()
+                                .setResponseCode(200)
+                                .setBody(responseJson));
+
+                GenerateReportResult reportResult = client.generateReport(chipIds, queries, true, true);
+
+                // Verify transform query was sent in request
+                String request = server.takeRequest().getBody().readUtf8();
+                assertTrue(request.contains("\"transform_query\":true"));
+                assertTrue(request.contains("\"return_transformed_query\":true"));
+
+                // Verify transformed query in response
+                assertEquals("SELECT COALESCE(name, 'N/A') FROM users",
+                                reportResult.getResults().get(0).getTransformedQuery());
+
+                // Verify timing is present
+                assertNotNull(reportResult.getTiming());
+                assertEquals(100, reportResult.getTiming().getTotalMs());
         }
 }

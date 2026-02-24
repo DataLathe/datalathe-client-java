@@ -158,23 +158,39 @@ public class DatalatheClient {
 
     /**
      * Executes queries against a list of chip IDs
-     * 
+     *
      * @param chipIds List of chip IDs to query
      * @param queries List of SQL queries to execute
-     * @return Map of query index to ResultSet
+     * @return Map of query index to Result
      * @throws IOException if the API call fails
      */
     public Map<Integer, GenerateReportCommand.Response.Result> generateReport(List<String> chipIds,
             List<String> queries) throws IOException {
-        Map<Integer, GenerateReportCommand.Response.Result> results = new HashMap<>();
+        return generateReport(chipIds, queries, null, null).getResults();
+    }
 
+    /**
+     * Executes queries against a list of chip IDs with transform query support
+     *
+     * @param chipIds               List of chip IDs to query
+     * @param queries               List of SQL queries to execute
+     * @param transformQuery        If true, transform queries from MariaDB to DuckDB syntax
+     * @param returnTransformedQuery If true, include the transformed query in results
+     * @return GenerateReportResult containing results map and timing metadata
+     * @throws IOException if the API call fails
+     */
+    public GenerateReportResult generateReport(List<String> chipIds, List<String> queries,
+            Boolean transformQuery, Boolean returnTransformedQuery) throws IOException {
         GenerateReportCommand.Request request = new GenerateReportCommand.Request();
         request.setSourceType(SourceType.LOCAL);
         request.setQueryRequest(new GenerateReportCommand.Request.Queries(queries));
         request.setChipIds(chipIds);
+        request.setTransformQuery(transformQuery);
+        request.setReturnTransformedQuery(returnTransformedQuery);
 
         GenerateReportCommand.Response response = sendCommand(new GenerateReportCommand(request));
 
+        Map<Integer, GenerateReportCommand.Response.Result> results = new HashMap<>();
         if (response.getResult() != null) {
             for (Map.Entry<String, GenerateReportCommand.Response.Result> entry : response
                     .getResult().entrySet()) {
@@ -184,6 +200,6 @@ public class DatalatheClient {
             }
         }
 
-        return results;
+        return new GenerateReportResult(results, response.getTiming());
     }
 }
