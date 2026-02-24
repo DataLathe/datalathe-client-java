@@ -87,6 +87,14 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- JUnit Vintage Engine for running JUnit 4 tests on JUnit 5 platform -->
+        <dependency>
+            <groupId>org.junit.vintage</groupId>
+            <artifactId>junit-vintage-engine</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>com.squareup.okhttp3</groupId>
             <artifactId>mockwebserver</artifactId>
