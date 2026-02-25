@@ -65,7 +65,13 @@ public class DatalatheResultSet extends AbstractResultSet {
     public int getInt(int columnIndex) throws SQLException {
         String value = getValue(columnIndex);
         wasNull = value == null;
-        return value == null ? 0 : Integer.parseInt(value);
+        if (value == null) return 0;
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException e) {
+            // Handle float strings like "712.17" by truncating to int
+            return (int) Double.parseDouble(value);
+        }
     }
 
     @Override
