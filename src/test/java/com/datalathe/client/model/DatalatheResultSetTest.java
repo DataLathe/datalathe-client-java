@@ -345,52 +345,52 @@ class DatalatheResultSetTest {
         result.setResult(data);
         result.setSchema(schema);
 
-        DatalatheResultSet rs = new DatalatheResultSet(result);
+        try (DatalatheResultSet rs = new DatalatheResultSet(result)) {
+            // First row: all empty strings should behave as null
+            assertTrue(rs.next());
 
-        // First row: all empty strings should behave as null
-        assertTrue(rs.next());
+            assertEquals(0, rs.getInt(1));
+            assertTrue(rs.wasNull());
 
-        assertEquals(0, rs.getInt(1));
-        assertTrue(rs.wasNull());
+            assertEquals(0L, rs.getLong(2));
+            assertTrue(rs.wasNull());
 
-        assertEquals(0L, rs.getLong(2));
-        assertTrue(rs.wasNull());
+            assertEquals(0.0f, rs.getFloat(3), 0.001);
+            assertTrue(rs.wasNull());
 
-        assertEquals(0.0f, rs.getFloat(3), 0.001);
-        assertTrue(rs.wasNull());
+            assertEquals(0.0, rs.getDouble(4), 0.001);
+            assertTrue(rs.wasNull());
 
-        assertEquals(0.0, rs.getDouble(4), 0.001);
-        assertTrue(rs.wasNull());
+            assertFalse(rs.getBoolean(5));
+            assertTrue(rs.wasNull());
 
-        assertFalse(rs.getBoolean(5));
-        assertTrue(rs.wasNull());
+            assertNull(rs.getString(6));
+            assertTrue(rs.wasNull());
 
-        assertNull(rs.getString(6));
-        assertTrue(rs.wasNull());
+            assertNull(rs.getObject(1));
+            assertTrue(rs.wasNull());
 
-        assertNull(rs.getObject(1));
-        assertTrue(rs.wasNull());
+            // Second row: valid values should parse fine
+            assertTrue(rs.next());
 
-        // Second row: valid values should parse fine
-        assertTrue(rs.next());
+            assertEquals(42, rs.getInt(1));
+            assertFalse(rs.wasNull());
 
-        assertEquals(42, rs.getInt(1));
-        assertFalse(rs.wasNull());
+            assertEquals(9999999999L, rs.getLong(2));
+            assertFalse(rs.wasNull());
 
-        assertEquals(9999999999L, rs.getLong(2));
-        assertFalse(rs.wasNull());
+            assertEquals(3.14f, rs.getFloat(3), 0.01);
+            assertFalse(rs.wasNull());
 
-        assertEquals(3.14f, rs.getFloat(3), 0.01);
-        assertFalse(rs.wasNull());
+            assertEquals(99.99, rs.getDouble(4), 0.001);
+            assertFalse(rs.wasNull());
 
-        assertEquals(99.99, rs.getDouble(4), 0.001);
-        assertFalse(rs.wasNull());
+            assertTrue(rs.getBoolean(5));
+            assertFalse(rs.wasNull());
 
-        assertTrue(rs.getBoolean(5));
-        assertFalse(rs.wasNull());
-
-        assertEquals("hello", rs.getString(6));
-        assertFalse(rs.wasNull());
+            assertEquals("hello", rs.getString(6));
+            assertFalse(rs.wasNull());
+        }
     }
 
     @Test
