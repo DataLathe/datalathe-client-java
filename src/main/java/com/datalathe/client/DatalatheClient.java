@@ -52,6 +52,23 @@ public class DatalatheClient {
      */
     public String createChip(String sourceName, String query, String tableName,
             CreateChipCommand.Request.Source.Partition partition) throws IOException {
+        return createChip(sourceName, query, tableName, partition, null);
+    }
+
+    /**
+     * Creates a chip from a source request with partition and column replace configuration
+     *
+     * @param sourceName    The name of the source database
+     * @param query         The SQL query to execute
+     * @param tableName     The name of the table
+     * @param partition     Optional partition configuration
+     * @param columnReplace Optional column rename map (old name → new name)
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChip(String sourceName, String query, String tableName,
+            CreateChipCommand.Request.Source.Partition partition,
+            Map<String, String> columnReplace) throws IOException {
         CreateChipCommand.Request request = new CreateChipCommand.Request();
         request.setSourceType(SourceType.MYSQL);
         request.setSource(CreateChipCommand.Request.Source.builder()
@@ -59,6 +76,7 @@ public class DatalatheClient {
                 .tableName(tableName)
                 .query(query)
                 .partition(partition)
+                .columnReplace(columnReplace)
                 .build());
         CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
         if (response.getError() != null) {
@@ -116,12 +134,29 @@ public class DatalatheClient {
      */
     public String createChipFromFile(String filePath, String tableName,
             CreateChipCommand.Request.Source.Partition partition) throws IOException {
+        return createChipFromFile(filePath, tableName, partition, null);
+    }
+
+    /**
+     * Creates a chip from a file source with partition and column replace configuration
+     *
+     * @param filePath      Path to the file on the server
+     * @param tableName     Optional table name for the chip
+     * @param partition     Optional partition configuration
+     * @param columnReplace Optional column rename map (old name → new name)
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChipFromFile(String filePath, String tableName,
+            CreateChipCommand.Request.Source.Partition partition,
+            Map<String, String> columnReplace) throws IOException {
         CreateChipCommand.Request request = new CreateChipCommand.Request();
         request.setSourceType(SourceType.FILE);
         request.setSource(CreateChipCommand.Request.Source.builder()
                 .filePath(filePath)
                 .tableName(tableName)
                 .partition(partition)
+                .columnReplace(columnReplace)
                 .build());
         CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
         if (response.getError() != null) {

@@ -1,6 +1,7 @@
 package com.datalathe.client.command.impl;
 
 import java.util.List;
+import java.util.Map;
 
 import com.datalathe.client.command.DatalatheCommand;
 import com.datalathe.client.command.DatalatheCommandResponse;
@@ -84,6 +85,10 @@ public class CreateChipCommand implements DatalatheCommand {
             @JsonProperty("partition")
             @JsonInclude(JsonInclude.Include.NON_NULL)
             private Partition partition;
+
+            @JsonProperty("column_replace")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            private Map<String, String> columnReplace;
 
             public Source(String databaseName, String tableName, String query) {
                 this.databaseName = databaseName;
