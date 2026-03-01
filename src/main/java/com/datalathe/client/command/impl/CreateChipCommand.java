@@ -48,10 +48,15 @@ public class CreateChipCommand implements DatalatheCommand {
         @JsonInclude(JsonInclude.Include.NON_NULL)
         private String chipId;
 
+        @JsonProperty("storage_config")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private S3StorageConfig storageConfig;
+
         public Request(Request requestBase) {
             this.sourceType = requestBase.getSourceType();
             this.source = requestBase.getSource();
             this.chipId = requestBase.getChipId();
+            this.storageConfig = requestBase.getStorageConfig();
         }
 
         public Request(SourceType sourceType, Source sourceRequest) {
@@ -118,6 +123,24 @@ public class CreateChipCommand implements DatalatheCommand {
                 }
             }
         }
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class S3StorageConfig {
+        @JsonProperty("bucket")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private String bucket;
+
+        @JsonProperty("key_prefix")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private String keyPrefix;
+
+        @JsonProperty("ttl_days")
+        @JsonInclude(JsonInclude.Include.NON_NULL)
+        private Integer ttlDays;
     }
 
     @Data

@@ -12,6 +12,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -69,6 +71,25 @@ public class DatalatheClient {
     public String createChip(String sourceName, String query, String tableName,
             CreateChipCommand.Request.Source.Partition partition,
             Map<String, String> columnReplace) throws IOException {
+        return createChip(sourceName, query, tableName, partition, columnReplace, null);
+    }
+
+    /**
+     * Creates a chip from a source request with partition, column replace, and S3 storage configuration
+     *
+     * @param sourceName    The name of the source database
+     * @param query         The SQL query to execute
+     * @param tableName     The name of the table
+     * @param partition     Optional partition configuration
+     * @param columnReplace Optional column rename map (old name -> new name)
+     * @param storageConfig Optional S3 storage configuration (bucket, prefix, TTL)
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChip(String sourceName, String query, String tableName,
+            CreateChipCommand.Request.Source.Partition partition,
+            Map<String, String> columnReplace,
+            CreateChipCommand.S3StorageConfig storageConfig) throws IOException {
         CreateChipCommand.Request request = new CreateChipCommand.Request();
         request.setSourceType(SourceType.MYSQL);
         request.setSource(CreateChipCommand.Request.Source.builder()
@@ -78,6 +99,7 @@ public class DatalatheClient {
                 .partition(partition)
                 .columnReplace(columnReplace)
                 .build());
+        request.setStorageConfig(storageConfig);
         CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
         if (response.getError() != null) {
             throw new IOException("Failed to stage data: " + response.getError());
@@ -150,6 +172,24 @@ public class DatalatheClient {
     public String createChipFromFile(String filePath, String tableName,
             CreateChipCommand.Request.Source.Partition partition,
             Map<String, String> columnReplace) throws IOException {
+        return createChipFromFile(filePath, tableName, partition, columnReplace, null);
+    }
+
+    /**
+     * Creates a chip from a file source with partition, column replace, and S3 storage configuration
+     *
+     * @param filePath      Path to the file on the server
+     * @param tableName     Optional table name for the chip
+     * @param partition     Optional partition configuration
+     * @param columnReplace Optional column rename map (old name -> new name)
+     * @param storageConfig Optional S3 storage configuration (bucket, prefix, TTL)
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChipFromFile(String filePath, String tableName,
+            CreateChipCommand.Request.Source.Partition partition,
+            Map<String, String> columnReplace,
+            CreateChipCommand.S3StorageConfig storageConfig) throws IOException {
         CreateChipCommand.Request request = new CreateChipCommand.Request();
         request.setSourceType(SourceType.FILE);
         request.setSource(CreateChipCommand.Request.Source.builder()
@@ -158,11 +198,33 @@ public class DatalatheClient {
                 .partition(partition)
                 .columnReplace(columnReplace)
                 .build());
+        request.setStorageConfig(storageConfig);
         CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
         if (response.getError() != null) {
             throw new IOException("Failed to stage file: " + response.getError());
         }
         return response.getChipId();
+    }
+
+    /**
+     * Deletes a chip and its associated data (local files and S3 objects).
+     *
+     * @param chipId The ID of the chip to delete
+     * @throws IOException if the API call fails
+     */
+    public void deleteChip(String chipId) throws IOException {
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + "/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8))
+                .delete()
+                .build();
+
+        logger.debug("Deleting chip: {}", chipId);
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to delete chip: " + response.code() + " " + response.body().string());
+            }
+        }
     }
 
     public List<String> createChips(List<CreateChipCommand.Request.Source> sources) throws IOException {
