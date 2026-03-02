@@ -87,6 +87,10 @@ public class CreateChipCommand implements DatalatheCommand {
             @JsonInclude(JsonInclude.Include.NON_NULL)
             private String s3Path;
 
+            @JsonProperty("source_chip_ids")
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            private List<String> sourceChipIds;
+
             @JsonProperty("partition")
             @JsonInclude(JsonInclude.Include.NON_NULL)
             private Partition partition;
