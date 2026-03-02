@@ -207,6 +207,46 @@ public class DatalatheClient {
     }
 
     /**
+     * Creates a new chip from existing chip(s) as the data source.
+     *
+     * @param sourceChipIds The chip ID(s) to use as source data
+     * @param query         Optional SQL query to transform the data (runs against source chip tables)
+     * @param tableName     Optional table name for the new chip
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChipFromChip(List<String> sourceChipIds, String query, String tableName) throws IOException {
+        return createChipFromChip(sourceChipIds, query, tableName, null);
+    }
+
+    /**
+     * Creates a new chip from existing chip(s) with S3 storage configuration.
+     *
+     * @param sourceChipIds The chip ID(s) to use as source data
+     * @param query         Optional SQL query to transform the data (runs against source chip tables)
+     * @param tableName     Optional table name for the new chip
+     * @param storageConfig Optional S3 storage configuration (bucket, prefix, TTL)
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChipFromChip(List<String> sourceChipIds, String query, String tableName,
+            CreateChipCommand.S3StorageConfig storageConfig) throws IOException {
+        CreateChipCommand.Request request = new CreateChipCommand.Request();
+        request.setSourceType(SourceType.CACHE);
+        request.setSource(CreateChipCommand.Request.Source.builder()
+                .sourceChipIds(sourceChipIds)
+                .query(query)
+                .tableName(tableName)
+                .build());
+        request.setStorageConfig(storageConfig);
+        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
+        if (response.getError() != null) {
+            throw new IOException("Failed to create chip from chip: " + response.getError());
+        }
+        return response.getChipId();
+    }
+
+    /**
      * Deletes a chip and its associated data (local files and S3 objects).
      *
      * @param chipId The ID of the chip to delete
