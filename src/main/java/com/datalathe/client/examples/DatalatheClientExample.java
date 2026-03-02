@@ -134,6 +134,45 @@ public class DatalatheClientExample {
         rs.close();
     }
 
+    /**
+     * Example: create a new chip from an existing chip, optionally transforming
+     * the data with a SQL query that runs against the source chip tables.
+     */
+    public void demonstrateCreateChipFromChip() throws IOException, SQLException {
+        // First, create a chip from a database source
+        String sourceChipId = client.createChip("my_database",
+                "SELECT * FROM employees", "employees");
+        System.out.println("Created source chip: " + sourceChipId);
+
+        // Create a new chip from the source chip, filtering to just Engineering
+        String filteredChipId = client.createChipFromChip(
+                Collections.singletonList(sourceChipId),
+                "SELECT name, salary FROM employees WHERE department = 'Engineering'",
+                "engineering_salaries");
+        System.out.println("Created filtered chip: " + filteredChipId);
+
+        // Query the new chip
+        Map<Integer, GenerateReportCommand.Response.Result> results = client.generateReport(
+                Collections.singletonList(filteredChipId),
+                Collections.singletonList("SELECT * FROM engineering_salaries"));
+        ResultSet rs = results.get(0).getResultSet();
+
+        System.out.println("\nChip-from-chip results:");
+        System.out.println("----------------------------------------");
+        while (rs.next()) {
+            System.out.printf("Name: %s, Salary: %.2f%n",
+                    rs.getString("name"), rs.getDouble("salary"));
+        }
+        rs.close();
+
+        // Create a chip from multiple source chips (no query = copy all data)
+        String combinedChipId = client.createChipFromChip(
+                Arrays.asList(sourceChipId, filteredChipId),
+                null,
+                "combined_data");
+        System.out.println("Created combined chip: " + combinedChipId);
+    }
+
     public static void main(String[] args) {
         String baseUrl = "http://localhost:8080";
         DatalatheClient client = new DatalatheClient(baseUrl);
@@ -143,6 +182,7 @@ public class DatalatheClientExample {
             example.runExample();
             example.demonstrateDataTypes();
             example.demonstratePartition();
+            example.demonstrateCreateChipFromChip();
         } catch (IOException | SQLException e) {
             System.err.println("Error running example: " + e.getMessage());
             e.printStackTrace();
