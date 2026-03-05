@@ -99,6 +99,14 @@ public class CreateChipCommand implements DatalatheCommand {
             @JsonInclude(JsonInclude.Include.NON_NULL)
             private Map<String, String> columnReplace;
 
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            @JsonProperty("source_type")
+            private SourceType sourceType;
+
+            @JsonInclude(JsonInclude.Include.NON_NULL)
+            @JsonProperty("storage_config")
+            private S3StorageConfig storageConfig;
+
             public Source(String databaseName, String tableName, String query) {
                 this.databaseName = databaseName;
                 this.tableName = tableName;
