@@ -108,22 +108,78 @@ public class DatalatheClient {
     }
 
     /**
-     * Stages data from multiple source requests and returns a list of chip IDs
-     * 
-     * @param sources List of source requests to process
-     * @param chipId  Optional chip ID to use
+     * Creates a chip from a pre-built Source object.
+     * The Source must have sourceType set. If storageConfig is set on the Source, it will be used.
+     *
+     * @param source The fully configured source
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     * @throws IllegalArgumentException if sourceType is not set on the source
+     */
+    public String createChip(CreateChipCommand.Request.Source source) throws IOException {
+        return createChip(source, null);
+    }
+
+    /**
+     * Creates a chip from a pre-built Source object with an optional chip ID.
+     * The Source must have sourceType set. If storageConfig is set on the Source, it will be used.
+     *
+     * @param source The fully configured source
+     * @param chipId Optional chip ID to use
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     * @throws IllegalArgumentException if sourceType is not set on the source
+     */
+    public String createChip(CreateChipCommand.Request.Source source, String chipId) throws IOException {
+        if (source.getSourceType() == null) {
+            throw new IllegalArgumentException("sourceType must be set on the Source");
+        }
+        CreateChipCommand.Request request = new CreateChipCommand.Request();
+        request.setSourceType(source.getSourceType());
+        request.setSource(source);
+        request.setChipId(chipId);
+        request.setStorageConfig(source.getStorageConfig());
+        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
+        if (response.getError() != null) {
+            throw new IOException("Failed to stage data: " + response.getError());
+        }
+        return response.getChipId();
+    }
+
+    /**
+     * Creates chips from a list of pre-built Source objects.
+     * Each Source must have sourceType set. If storageConfig is set on a Source, it will be used.
+     *
+     * @param sources List of fully configured sources
      * @return List of chip IDs
      * @throws IOException if any API call fails
+     * @throws IllegalArgumentException if sourceType is not set on any source
+     */
+    public List<String> createChips(List<CreateChipCommand.Request.Source> sources) throws IOException {
+        return createChips(sources, null);
+    }
+
+    /**
+     * Creates chips from a list of pre-built Source objects with an optional shared chip ID.
+     * Each Source must have sourceType set. If storageConfig is set on a Source, it will be used.
+     *
+     * @param sources List of fully configured sources
+     * @param chipId  Optional chip ID to use for all sources
+     * @return List of chip IDs
+     * @throws IOException if any API call fails
+     * @throws IllegalArgumentException if sourceType is not set on any source
      */
     public List<String> createChips(List<CreateChipCommand.Request.Source> sources, String chipId) throws IOException {
-        CreateChipCommand.Request requestBase = new CreateChipCommand.Request();
-        requestBase.setSourceType(SourceType.MYSQL);
-        requestBase.setChipId(chipId);
-
         List<String> chipIds = new ArrayList<>();
         for (CreateChipCommand.Request.Source source : sources) {
-            CreateChipCommand.Request request = new CreateChipCommand.Request(requestBase);
+            if (source.getSourceType() == null) {
+                throw new IllegalArgumentException("sourceType must be set on each Source");
+            }
+            CreateChipCommand.Request request = new CreateChipCommand.Request();
+            request.setSourceType(source.getSourceType());
             request.setSource(source);
+            request.setChipId(chipId);
+            request.setStorageConfig(source.getStorageConfig());
             CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
             if (response.getError() != null) {
                 throw new IOException("Failed to stage data: " + response.getError());
@@ -265,10 +321,6 @@ public class DatalatheClient {
                 throw new IOException("Failed to delete chip: " + response.code() + " " + response.body().string());
             }
         }
-    }
-
-    public List<String> createChips(List<CreateChipCommand.Request.Source> sources) throws IOException {
-        return createChips(sources, null);
     }
 
     /**
