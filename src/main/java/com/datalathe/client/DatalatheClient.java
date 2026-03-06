@@ -4,6 +4,7 @@ import com.datalathe.client.types.SourceType;
 import com.datalathe.client.command.DatalatheCommand;
 import com.datalathe.client.command.DatalatheCommandResponse;
 import com.datalathe.client.command.impl.CreateChipCommand;
+import com.datalathe.client.command.impl.ExtractTablesCommand;
 import com.datalathe.client.command.impl.GenerateReportCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -348,6 +349,21 @@ public class DatalatheClient {
             return objectMapper.readValue(responseBody,
                     objectMapper.constructType(command.getResponseType().getClass()));
         }
+    }
+
+    /**
+     * Extracts the list of table names referenced in a SQL query.
+     *
+     * @param query The SQL query to analyze
+     * @return List of table names
+     * @throws IOException if the API call fails
+     */
+    public List<String> extractTables(String query) throws IOException {
+        ExtractTablesCommand.Response response = sendCommand(new ExtractTablesCommand(query));
+        if (response.getError() != null) {
+            throw new IOException("Failed to extract tables: " + response.getError());
+        }
+        return response.getTables();
     }
 
     /**
