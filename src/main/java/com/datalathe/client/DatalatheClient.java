@@ -360,7 +360,7 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public SearchChipsResponse searchChips(String tableName, String partitionValue) throws IOException {
-        return searchChips(tableName, partitionValue, null);
+        return searchChips(tableName, partitionValue, null, null);
     }
 
     /**
@@ -368,11 +368,15 @@ public class DatalatheClient {
      *
      * @param tableName      Optional table name filter
      * @param partitionValue Optional partition value filter
-     * @param tag            Optional tag filter in "key:value" format
+     * @param tagKey         Tag key to filter by (requires tagValue)
+     * @param tagValue       Tag value to filter by (requires tagKey)
      * @return The search response containing matched chips, metadata, and tags
      * @throws IOException if the API call fails
      */
-    public SearchChipsResponse searchChips(String tableName, String partitionValue, String tag) throws IOException {
+    public SearchChipsResponse searchChips(String tableName, String partitionValue,
+                                           String tagKey, String tagValue) throws IOException {
+        String tag = (tagKey != null && tagValue != null) ? tagKey + ":" + tagValue : null;
+
         StringBuilder url = new StringBuilder(baseUrl).append("/lathe/chips/search");
         List<String> params = new ArrayList<>();
         if (tableName != null) {
