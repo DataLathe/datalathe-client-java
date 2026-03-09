@@ -51,4 +51,16 @@ public class SearchChipsResponse {
         @JsonProperty("ttl_days")
         private Long ttlDays;
     }
+
+    @Data
+    @NoArgsConstructor
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class ChipTagRecord {
+        @JsonProperty("chip_id")
+        private String chipId;
+        private String key;
+        private String value;
+    }
+
+    private List<ChipTagRecord> tags;
 }

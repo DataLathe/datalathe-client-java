@@ -360,6 +360,19 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public SearchChipsResponse searchChips(String tableName, String partitionValue) throws IOException {
+        return searchChips(tableName, partitionValue, null);
+    }
+
+    /**
+     * Searches for chips by table name, partition value, and/or tag.
+     *
+     * @param tableName      Optional table name filter
+     * @param partitionValue Optional partition value filter
+     * @param tag            Optional tag filter in "key:value" format
+     * @return The search response containing matched chips, metadata, and tags
+     * @throws IOException if the API call fails
+     */
+    public SearchChipsResponse searchChips(String tableName, String partitionValue, String tag) throws IOException {
         StringBuilder url = new StringBuilder(baseUrl).append("/lathe/chips/search");
         List<String> params = new ArrayList<>();
         if (tableName != null) {
@@ -367,6 +380,9 @@ public class DatalatheClient {
         }
         if (partitionValue != null) {
             params.add("partition_value=" + URLEncoder.encode(partitionValue, StandardCharsets.UTF_8));
+        }
+        if (tag != null) {
+            params.add("tag=" + URLEncoder.encode(tag, StandardCharsets.UTF_8));
         }
         if (!params.isEmpty()) {
             url.append("?").append(String.join("&", params));
@@ -384,6 +400,54 @@ public class DatalatheClient {
                 throw new IOException("Failed to search chips: " + response.code() + " " + response.body().string());
             }
             return objectMapper.readValue(response.body().string(), SearchChipsResponse.class);
+        }
+    }
+
+    /**
+     * Adds or updates tags on a chip. Existing keys have their values replaced.
+     *
+     * @param chipId The chip ID to tag
+     * @param tags   Key-value pairs to set
+     * @throws IOException if the API call fails
+     */
+    public void addChipTags(String chipId, Map<String, String> tags) throws IOException {
+        Map<String, Object> body = new HashMap<>();
+        body.put("tags", tags);
+
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + "/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8) + "/tags")
+                .post(RequestBody.create(objectMapper.writeValueAsString(body), JSON))
+                .build();
+
+        logger.debug("Adding tags to chip: {}", chipId);
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to add chip tags: " + response.code() + " " + response.body().string());
+            }
+        }
+    }
+
+    /**
+     * Removes a tag from a chip by key.
+     *
+     * @param chipId The chip ID
+     * @param key    The tag key to remove
+     * @throws IOException if the API call fails
+     */
+    public void deleteChipTag(String chipId, String key) throws IOException {
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + "/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8)
+                        + "/tags/" + URLEncoder.encode(key, StandardCharsets.UTF_8))
+                .delete()
+                .build();
+
+        logger.debug("Deleting tag '{}' from chip: {}", key, chipId);
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to delete chip tag: " + response.code() + " " + response.body().string());
+            }
         }
     }
 
