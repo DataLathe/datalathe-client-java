@@ -352,6 +352,42 @@ public class DatalatheClient {
     }
 
     /**
+     * Searches for chips by table name and/or partition value.
+     *
+     * @param tableName      Optional table name filter
+     * @param partitionValue Optional partition value filter
+     * @return The search response containing matched chips and metadata
+     * @throws IOException if the API call fails
+     */
+    public SearchChipsResponse searchChips(String tableName, String partitionValue) throws IOException {
+        StringBuilder url = new StringBuilder(baseUrl).append("/lathe/chips/search");
+        List<String> params = new ArrayList<>();
+        if (tableName != null) {
+            params.add("table_name=" + URLEncoder.encode(tableName, StandardCharsets.UTF_8));
+        }
+        if (partitionValue != null) {
+            params.add("partition_value=" + URLEncoder.encode(partitionValue, StandardCharsets.UTF_8));
+        }
+        if (!params.isEmpty()) {
+            url.append("?").append(String.join("&", params));
+        }
+
+        Request httpRequest = new Request.Builder()
+                .url(url.toString())
+                .get()
+                .build();
+
+        logger.debug("Searching chips: {}", httpRequest.url());
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to search chips: " + response.code() + " " + response.body().string());
+            }
+            return objectMapper.readValue(response.body().string(), SearchChipsResponse.class);
+        }
+    }
+
+    /**
      * Extracts the list of table names referenced in a SQL query.
      *
      * @param query The SQL query to analyze
