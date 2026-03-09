@@ -471,6 +471,23 @@ public class DatalatheClient {
     }
 
     /**
+     * Extracts the list of table names referenced in a SQL query.
+     * Optionally transforms the query from MySQL/MariaDB syntax to DuckDB.
+     *
+     * @param query     The SQL query to analyze
+     * @param transform When true, also returns the query transformed to DuckDB syntax
+     * @return The response containing table names and optionally the transformed query
+     * @throws IOException if the API call fails
+     */
+    public ExtractTablesCommand.Response extractTablesWithTransform(String query, boolean transform) throws IOException {
+        ExtractTablesCommand.Response response = sendCommand(new ExtractTablesCommand(query, transform));
+        if (response.getError() != null) {
+            throw new IOException("Failed to extract tables: " + response.getError());
+        }
+        return response;
+    }
+
+    /**
      * Executes queries against a list of chip IDs
      *
      * @param chipIds List of chip IDs to query
