@@ -12,7 +12,11 @@ public class ExtractTablesCommand implements DatalatheCommand {
     private final Request request;
 
     public ExtractTablesCommand(String query) {
-        this.request = new Request(query);
+        this.request = new Request(query, null);
+    }
+
+    public ExtractTablesCommand(String query, Boolean transform) {
+        this.request = new Request(query, transform);
     }
 
     @Override
@@ -36,8 +40,12 @@ public class ExtractTablesCommand implements DatalatheCommand {
         @JsonProperty("query")
         private String query;
 
-        public Request(String query) {
+        @JsonProperty("transform")
+        private Boolean transform;
+
+        public Request(String query, Boolean transform) {
             this.query = query;
+            this.transform = transform;
         }
     }
 
@@ -46,6 +54,9 @@ public class ExtractTablesCommand implements DatalatheCommand {
     public static class Response implements DatalatheCommandResponse {
         @JsonProperty("tables")
         private List<String> tables;
+
+        @JsonProperty("transformed_query")
+        private String transformedQuery;
 
         @JsonProperty("error")
         private String error;
