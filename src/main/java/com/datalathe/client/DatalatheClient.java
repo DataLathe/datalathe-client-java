@@ -264,6 +264,46 @@ public class DatalatheClient {
     }
 
     /**
+     * Creates a new chip from an S3 object (CSV, Parquet, etc.).
+     *
+     * @param s3Path    S3 URI (e.g. s3://bucket/path/file.csv)
+     * @param tableName Optional table name for the chip
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChipFromS3(String s3Path, String tableName) throws IOException {
+        return createChipFromS3(s3Path, tableName, null, null);
+    }
+
+    /**
+     * Creates a new chip from an S3 object with full options.
+     *
+     * @param s3Path        S3 URI (e.g. s3://bucket/path/file.csv)
+     * @param tableName     Optional table name for the chip
+     * @param columnReplace Optional column renaming map
+     * @param storageConfig Optional S3 storage configuration for the created chip
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChipFromS3(String s3Path, String tableName,
+            Map<String, String> columnReplace,
+            CreateChipCommand.S3StorageConfig storageConfig) throws IOException {
+        CreateChipCommand.Request request = new CreateChipCommand.Request();
+        request.setSourceType(SourceType.S3);
+        request.setSource(CreateChipCommand.Request.Source.builder()
+                .s3Path(s3Path)
+                .tableName(tableName)
+                .columnReplace(columnReplace)
+                .build());
+        request.setStorageConfig(storageConfig);
+        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
+        if (response.getError() != null) {
+            throw new IOException("Failed to create chip from S3: " + response.getError());
+        }
+        return response.getChipId();
+    }
+
+    /**
      * Creates a new chip from existing chip(s) as the data source.
      *
      * @param sourceChipIds The chip ID(s) to use as source data
