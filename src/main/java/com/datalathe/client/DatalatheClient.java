@@ -364,9 +364,86 @@ public class DatalatheClient {
         }
     }
 
+    // --- Connection management ---
+
+    /**
+     * Lists all database connections (passwords excluded).
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, String>> listConnections() throws IOException {
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + "/lathe/connections")
+                .get()
+                .build();
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to list connections: " + response.code());
+            }
+            return objectMapper.readValue(response.body().string(), List.class);
+        }
+    }
+
+    /**
+     * Creates or updates a database connection.
+     */
+    public Map<String, String> upsertConnection(String alias, String host, String port, String database, String user, String password) throws IOException {
+        Map<String, String> body = new HashMap<>();
+        body.put("host", host);
+        body.put("port", port);
+        body.put("database", database);
+        body.put("user", user);
+        body.put("password", password);
+
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + "/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8))
+                .put(RequestBody.create(objectMapper.writeValueAsString(body), JSON))
+                .build();
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to upsert connection: " + response.code() + " " + response.body().string());
+            }
+            return objectMapper.readValue(response.body().string(), Map.class);
+        }
+    }
+
+    /**
+     * Deletes a database connection.
+     */
+    public void deleteConnection(String alias) throws IOException {
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + "/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8))
+                .delete()
+                .build();
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to delete connection: " + response.code());
+            }
+        }
+    }
+
+    /**
+     * Tests a database connection by attempting a MySQL attach in DuckDB.
+     */
+    public Map<String, String> testConnection(String alias) throws IOException {
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + "/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8) + "/test")
+                .post(RequestBody.create("{}", JSON))
+                .build();
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to test connection: " + response.code() + " " + response.body().string());
+            }
+            return objectMapper.readValue(response.body().string(), Map.class);
+        }
+    }
+
     /**
      * Sends a command to the Datalathe API
-     * 
+     *
      * @param command The command to send
      * @return The response from the API
      * @throws IOException if the API call fails
