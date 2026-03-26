@@ -6,7 +6,7 @@
 
     <groupId>com.datalathe</groupId>
     <artifactId>datalathe-client</artifactId>
-    <version>patch</version>
+    <version>1.1.2</version>
     <packaging>jar</packaging>
 
     <name>Datalathe Java Client</name>
