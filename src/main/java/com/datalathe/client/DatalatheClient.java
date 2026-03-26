@@ -442,6 +442,100 @@ public class DatalatheClient {
     }
 
     /**
+     * Sends a GET request and returns parsed JSON.
+     */
+    @SuppressWarnings("unchecked")
+    private <T> T get(String path, Class<T> responseType) throws IOException {
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + path)
+                .get()
+                .build();
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("GET " + path + " failed: " + response.code());
+            }
+            return objectMapper.readValue(response.body().string(), responseType);
+        }
+    }
+
+    // --- Database inspection ---
+
+    /**
+     * Returns the list of databases available in the engine.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getDatabases() throws IOException {
+        return get("/lathe/stage/databases", List.class);
+    }
+
+    /**
+     * Returns the schema (tables and columns) for a given database.
+     */
+    @SuppressWarnings("unchecked")
+    public List<Map<String, Object>> getDatabaseSchema(String databaseName) throws IOException {
+        return get("/lathe/stage/schema/" + URLEncoder.encode(databaseName, StandardCharsets.UTF_8), List.class);
+    }
+
+    // --- Chip listing ---
+
+    /**
+     * Returns all chips and their metadata.
+     */
+    public SearchChipsResponse listChips() throws IOException {
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + "/lathe/chips")
+                .get()
+                .build();
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to list chips: " + response.code());
+            }
+            return objectMapper.readValue(response.body().string(), SearchChipsResponse.class);
+        }
+    }
+
+    /**
+     * Gets a database connection by alias (password excluded).
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, String> getConnection(String alias) throws IOException {
+        return get("/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8), Map.class);
+    }
+
+    // --- License management ---
+
+    /**
+     * Gets the current license status.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getLicense() throws IOException {
+        return get("/lathe/license", Map.class);
+    }
+
+    /**
+     * Installs or updates the license key.
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> putLicense(String licenseKey) throws IOException {
+        Map<String, String> body = new HashMap<>();
+        body.put("license_key", licenseKey);
+
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + "/lathe/license")
+                .put(RequestBody.create(objectMapper.writeValueAsString(body), JSON))
+                .build();
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("Failed to update license: " + response.code() + " " + response.body().string());
+            }
+            return objectMapper.readValue(response.body().string(), Map.class);
+        }
+    }
+
+    /**
      * Sends a command to the Datalathe API
      *
      * @param command The command to send
