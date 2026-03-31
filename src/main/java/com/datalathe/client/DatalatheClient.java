@@ -396,7 +396,8 @@ public class DatalatheClient {
         body.put("user", user);
         body.put("password", password);
 
-        return put("/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8), body, ConnectionInfo.class);
+        return put("/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8), body,
+                ConnectionInfo.class);
     }
 
     /**
@@ -427,7 +428,8 @@ public class DatalatheClient {
      * Returns the schema (tables and columns) for a given database.
      */
     public List<DatabaseColumn> getDatabaseSchema(String databaseName) throws IOException {
-        return Arrays.asList(get("/lathe/stage/schema/" + URLEncoder.encode(databaseName, StandardCharsets.UTF_8), DatabaseColumn[].class));
+        return Arrays.asList(get("/lathe/stage/schema/" + URLEncoder.encode(databaseName, StandardCharsets.UTF_8),
+                DatabaseColumn[].class));
     }
 
     // --- Chip listing ---
@@ -688,8 +690,10 @@ public class DatalatheClient {
      * @param name                   Display name for the context
      * @param credentialId           Unused (kept for backwards compatibility)
      * @param chipIds                Chip IDs to include in the context
-     * @param columnDescriptions     Column descriptions keyed by table name then column name
-     * @param dataRelationshipPrompt Description of how the data tables relate to each other
+     * @param columnDescriptions     Column descriptions keyed by table name then
+     *                               column name
+     * @param dataRelationshipPrompt Description of how the data tables relate to
+     *                               each other
      * @return The created context
      * @throws IOException if the API call fails
      */
@@ -757,7 +761,8 @@ public class DatalatheClient {
     }
 
     /**
-     * Executes a natural language query with conversation history and model override.
+     * Executes a natural language query with conversation history and model
+     * override.
      *
      * @param contextId           The AI context to query
      * @param credentialId        The AI credential to use
@@ -781,7 +786,6 @@ public class DatalatheClient {
 
     // --- HTTP helpers ---
 
-    @SuppressWarnings("unchecked")
     private <T> T get(String path, Class<T> responseType) throws IOException {
         Request httpRequest = new Request.Builder()
                 .url(baseUrl + path)
