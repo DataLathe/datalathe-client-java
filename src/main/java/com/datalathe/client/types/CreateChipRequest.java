@@ -6,6 +6,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Map;
+
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -23,6 +25,10 @@ public class CreateChipRequest {
     @JsonProperty("storage_config")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private S3StorageConfig storageConfig;
+
+    @JsonProperty("tags")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Map<String, String> tags;
 
     public CreateChipRequest(SourceType sourceType, ChipSource source) {
         this.sourceType = sourceType;

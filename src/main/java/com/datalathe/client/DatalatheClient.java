@@ -131,6 +131,21 @@ public class DatalatheClient {
      * @throws IllegalArgumentException if sourceType is not set on the source
      */
     public String createChip(ChipSource source, String chipId) throws IOException {
+        return createChip(source, chipId, null);
+    }
+
+    /**
+     * Creates a chip from a pre-built Source object with optional chip ID and tags.
+     * Tags are applied atomically with chip creation.
+     *
+     * @param source The fully configured source
+     * @param chipId Optional chip ID to use
+     * @param tags   Optional tags to apply atomically with creation
+     * @return The chip ID
+     * @throws IOException              if the API call fails
+     * @throws IllegalArgumentException if sourceType is not set on the source
+     */
+    public String createChip(ChipSource source, String chipId, Map<String, String> tags) throws IOException {
         if (source.getSourceType() == null) {
             throw new IllegalArgumentException("sourceType must be set on the Source");
         }
@@ -139,6 +154,7 @@ public class DatalatheClient {
         request.setSource(source);
         request.setChipId(chipId);
         request.setStorageConfig(source.getStorageConfig());
+        request.setTags(tags);
         CreateChipResponse response = post("/lathe/stage/data", request, CreateChipResponse.class);
         if (response.getError() != null) {
             throw new IOException("Failed to stage data: " + response.getError());
