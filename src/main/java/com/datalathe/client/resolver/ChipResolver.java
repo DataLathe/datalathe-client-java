@@ -85,9 +85,33 @@ public class ChipResolver {
                                  List<String> partitionValues,
                                  String tagKey, String tagValue,
                                  ChipFactory factory) throws IOException {
+        return resolve(reportQueries, partitionValues, tagKey, tagValue, factory, false);
+    }
+
+    /**
+     * Resolves chips from SQL queries with optional MySQL-to-DuckDB transform.
+     *
+     * @param reportQueries   SQL queries to parse for table names
+     * @param partitionValues partition values for partitioned tables (e.g. months)
+     * @param tagKey          tag key for tenant isolation
+     * @param tagValue        tag value for tenant isolation
+     * @param factory         strategy for classifying tables and building sources
+     * @param transform       when true, transforms MySQL/MariaDB syntax before extracting tables
+     * @return resolved chips split into unpartitioned and partitioned
+     * @throws IOException if table extraction or chip search fails
+     */
+    public ResolvedChips resolve(List<String> reportQueries,
+                                 List<String> partitionValues,
+                                 String tagKey, String tagValue,
+                                 ChipFactory factory,
+                                 boolean transform) throws IOException {
         Set<String> tables = new HashSet<>();
         for (String query : reportQueries) {
-            tables.addAll(client.extractTables(query));
+            if (transform) {
+                tables.addAll(client.extractTablesWithTransform(query, true).getTables());
+            } else {
+                tables.addAll(client.extractTables(query));
+            }
         }
         return resolveForTables(tables, partitionValues, tagKey, tagValue, factory);
     }
@@ -131,16 +155,16 @@ public class ChipResolver {
 
         if (existing.getChips() != null) {
             for (var chip : existing.getChips()) {
-                // Skip sub-chips — only parent rows
-                if (!chip.getChipId().equals(chip.getSubChipId())) continue;
-
                 String table = chip.getTableName();
-                if (unpartitionedTables.contains(table) && existingUnpartitionedTables.add(table)) {
+
+                if (unpartitionedTables.contains(table)
+                        && chip.getChipId().equals(chip.getSubChipId())
+                        && existingUnpartitionedTables.add(table)) {
                     existingUnpartitionedIds.add(chip.getChipId());
-                } else if (partitionedTables.contains(table) && pvSet.contains(chip.getPartitionValue())) {
-                    if (existingPartitionedKeys.add(table + "|" + chip.getPartitionValue())) {
-                        existingPartitionedIds.add(chip.getChipId());
-                    }
+                } else if (partitionedTables.contains(table)
+                        && pvSet.contains(chip.getPartitionValue())
+                        && existingPartitionedKeys.add(table + "|" + chip.getPartitionValue())) {
+                    existingPartitionedIds.add(chip.getChipId());
                 }
             }
         }
