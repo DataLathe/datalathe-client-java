@@ -165,7 +165,10 @@ public class ChipResolver {
         Set<String> existingPartitionedKeys = new HashSet<>();
         List<String> existingUnpartitionedIds = new ArrayList<>();
         List<String> existingPartitionedIds = new ArrayList<>();
-        Set<String> pvSet = new HashSet<>(partitionValues);
+        Set<String> pvSet = new HashSet<>();
+        for (Object pv : partitionValues) {
+            pvSet.add(String.valueOf(pv));
+        }
         String keyPrefix = tagKey + ":" + tagValue + "|";
 
         if (existing.getChips() != null) {
@@ -198,7 +201,7 @@ public class ChipResolver {
         // Find missing partitioned (table, pv) pairs
         record PartitionGap(String table, String partitionValue) {}
         List<PartitionGap> missingPartitioned = new ArrayList<>();
-        for (String pv : partitionValues) {
+        for (String pv : pvSet) {
             for (String table : partitionedTables) {
                 if (!existingPartitionedKeys.contains(table + "|" + pv)) {
                     missingPartitioned.add(new PartitionGap(table, pv));
