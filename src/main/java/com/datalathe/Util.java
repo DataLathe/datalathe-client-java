@@ -1,7 +1,7 @@
 package com.datalathe;
 
 import java.sql.ResultSet;
-import com.datalathe.client.command.impl.GenerateReportCommand;
+import com.datalathe.client.types.GenerateReportResponse;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.Map;
@@ -12,9 +12,9 @@ import org.apache.logging.log4j.Logger;
 public class Util {
     private static final Logger logger = LogManager.getLogger(Util.class);
 
-    public static void printReportResults(Map<Integer, GenerateReportCommand.Response.Result> results)
+    public static void printReportResults(Map<Integer, GenerateReportResponse.Result> results)
             throws SQLException {
-        for (GenerateReportCommand.Response.Result result : results.values()) {
+        for (GenerateReportResponse.Result result : results.values()) {
             logger.info("Query {} results:", result.getIdx());
             if (result.getError() != null) {
                 logger.info("Error: {}", result.getError());

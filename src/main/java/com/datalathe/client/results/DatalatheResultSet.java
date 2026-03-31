@@ -1,6 +1,6 @@
 package com.datalathe.client.results;
 
-import com.datalathe.client.command.impl.GenerateReportCommand.Response.Result;
+import com.datalathe.client.types.GenerateReportResponse.Result;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.sql.SQLFeatureNotSupportedException;
