@@ -1,6 +1,6 @@
 package com.datalathe.client.model;
 
-import com.datalathe.client.command.impl.GenerateReportCommand.Response.Result;
+import com.datalathe.client.types.GenerateReportResponse.Result;
 import com.datalathe.client.results.DatalatheResultSet;
 import com.datalathe.client.results.Schema;
 

@@ -1,11 +1,6 @@
 package com.datalathe.client;
 
-import com.datalathe.client.types.SourceType;
-import com.datalathe.client.command.DatalatheCommand;
-import com.datalathe.client.command.DatalatheCommandResponse;
-import com.datalathe.client.command.impl.CreateChipCommand;
-import com.datalathe.client.command.impl.ExtractTablesCommand;
-import com.datalathe.client.command.impl.GenerateReportCommand;
+import com.datalathe.client.types.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import okhttp3.*;
@@ -54,29 +49,31 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public String createChip(String sourceName, String query, String tableName,
-            CreateChipCommand.Request.Source.Partition partition) throws IOException {
+            ChipSource.Partition partition) throws IOException {
         return createChip(sourceName, query, tableName, partition, null);
     }
 
     /**
-     * Creates a chip from a source request with partition and column replace configuration
+     * Creates a chip from a source request with partition and column replace
+     * configuration
      *
      * @param sourceName    The name of the source database
      * @param query         The SQL query to execute
      * @param tableName     The name of the table
      * @param partition     Optional partition configuration
-     * @param columnReplace Optional column rename map (old name → new name)
+     * @param columnReplace Optional column rename map (old name -> new name)
      * @return The chip ID
      * @throws IOException if the API call fails
      */
     public String createChip(String sourceName, String query, String tableName,
-            CreateChipCommand.Request.Source.Partition partition,
+            ChipSource.Partition partition,
             Map<String, String> columnReplace) throws IOException {
         return createChip(sourceName, query, tableName, partition, columnReplace, null);
     }
 
     /**
-     * Creates a chip from a source request with partition, column replace, and S3 storage configuration
+     * Creates a chip from a source request with partition, column replace, and S3
+     * storage configuration
      *
      * @param sourceName    The name of the source database
      * @param query         The SQL query to execute
@@ -88,12 +85,12 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public String createChip(String sourceName, String query, String tableName,
-            CreateChipCommand.Request.Source.Partition partition,
+            ChipSource.Partition partition,
             Map<String, String> columnReplace,
-            CreateChipCommand.S3StorageConfig storageConfig) throws IOException {
-        CreateChipCommand.Request request = new CreateChipCommand.Request();
+            S3StorageConfig storageConfig) throws IOException {
+        CreateChipRequest request = new CreateChipRequest();
         request.setSourceType(SourceType.MYSQL);
-        request.setSource(CreateChipCommand.Request.Source.builder()
+        request.setSource(ChipSource.builder()
                 .databaseName(sourceName)
                 .tableName(tableName)
                 .query(query)
@@ -101,7 +98,7 @@ public class DatalatheClient {
                 .columnReplace(columnReplace)
                 .build());
         request.setStorageConfig(storageConfig);
-        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
+        CreateChipResponse response = post("/lathe/stage/data", request, CreateChipResponse.class);
         if (response.getError() != null) {
             throw new IOException("Failed to stage data: " + response.getError());
         }
@@ -110,37 +107,39 @@ public class DatalatheClient {
 
     /**
      * Creates a chip from a pre-built Source object.
-     * The Source must have sourceType set. If storageConfig is set on the Source, it will be used.
+     * The Source must have sourceType set. If storageConfig is set on the Source,
+     * it will be used.
      *
      * @param source The fully configured source
      * @return The chip ID
-     * @throws IOException if the API call fails
+     * @throws IOException              if the API call fails
      * @throws IllegalArgumentException if sourceType is not set on the source
      */
-    public String createChip(CreateChipCommand.Request.Source source) throws IOException {
+    public String createChip(ChipSource source) throws IOException {
         return createChip(source, null);
     }
 
     /**
      * Creates a chip from a pre-built Source object with an optional chip ID.
-     * The Source must have sourceType set. If storageConfig is set on the Source, it will be used.
+     * The Source must have sourceType set. If storageConfig is set on the Source,
+     * it will be used.
      *
      * @param source The fully configured source
      * @param chipId Optional chip ID to use
      * @return The chip ID
-     * @throws IOException if the API call fails
+     * @throws IOException              if the API call fails
      * @throws IllegalArgumentException if sourceType is not set on the source
      */
-    public String createChip(CreateChipCommand.Request.Source source, String chipId) throws IOException {
+    public String createChip(ChipSource source, String chipId) throws IOException {
         if (source.getSourceType() == null) {
             throw new IllegalArgumentException("sourceType must be set on the Source");
         }
-        CreateChipCommand.Request request = new CreateChipCommand.Request();
+        CreateChipRequest request = new CreateChipRequest();
         request.setSourceType(source.getSourceType());
         request.setSource(source);
         request.setChipId(chipId);
         request.setStorageConfig(source.getStorageConfig());
-        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
+        CreateChipResponse response = post("/lathe/stage/data", request, CreateChipResponse.class);
         if (response.getError() != null) {
             throw new IOException("Failed to stage data: " + response.getError());
         }
@@ -149,39 +148,42 @@ public class DatalatheClient {
 
     /**
      * Creates chips from a list of pre-built Source objects.
-     * Each Source must have sourceType set. If storageConfig is set on a Source, it will be used.
+     * Each Source must have sourceType set. If storageConfig is set on a Source, it
+     * will be used.
      *
      * @param sources List of fully configured sources
      * @return List of chip IDs
-     * @throws IOException if any API call fails
+     * @throws IOException              if any API call fails
      * @throws IllegalArgumentException if sourceType is not set on any source
      */
-    public List<String> createChips(List<CreateChipCommand.Request.Source> sources) throws IOException {
+    public List<String> createChips(List<ChipSource> sources) throws IOException {
         return createChips(sources, null);
     }
 
     /**
-     * Creates chips from a list of pre-built Source objects with an optional shared chip ID.
-     * Each Source must have sourceType set. If storageConfig is set on a Source, it will be used.
+     * Creates chips from a list of pre-built Source objects with an optional shared
+     * chip ID.
+     * Each Source must have sourceType set. If storageConfig is set on a Source, it
+     * will be used.
      *
      * @param sources List of fully configured sources
      * @param chipId  Optional chip ID to use for all sources
      * @return List of chip IDs
-     * @throws IOException if any API call fails
+     * @throws IOException              if any API call fails
      * @throws IllegalArgumentException if sourceType is not set on any source
      */
-    public List<String> createChips(List<CreateChipCommand.Request.Source> sources, String chipId) throws IOException {
+    public List<String> createChips(List<ChipSource> sources, String chipId) throws IOException {
         List<String> chipIds = new ArrayList<>();
-        for (CreateChipCommand.Request.Source source : sources) {
+        for (ChipSource source : sources) {
             if (source.getSourceType() == null) {
                 throw new IllegalArgumentException("sourceType must be set on each Source");
             }
-            CreateChipCommand.Request request = new CreateChipCommand.Request();
+            CreateChipRequest request = new CreateChipRequest();
             request.setSourceType(source.getSourceType());
             request.setSource(source);
             request.setChipId(chipId);
             request.setStorageConfig(source.getStorageConfig());
-            CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
+            CreateChipResponse response = post("/lathe/stage/data", request, CreateChipResponse.class);
             if (response.getError() != null) {
                 throw new IOException("Failed to stage data: " + response.getError());
             }
@@ -212,28 +214,30 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public String createChipFromFile(String filePath, String tableName,
-            CreateChipCommand.Request.Source.Partition partition) throws IOException {
+            ChipSource.Partition partition) throws IOException {
         return createChipFromFile(filePath, tableName, partition, null);
     }
 
     /**
-     * Creates a chip from a file source with partition and column replace configuration
+     * Creates a chip from a file source with partition and column replace
+     * configuration
      *
      * @param filePath      Path to the file on the server
      * @param tableName     Optional table name for the chip
      * @param partition     Optional partition configuration
-     * @param columnReplace Optional column rename map (old name → new name)
+     * @param columnReplace Optional column rename map (old name -> new name)
      * @return The chip ID
      * @throws IOException if the API call fails
      */
     public String createChipFromFile(String filePath, String tableName,
-            CreateChipCommand.Request.Source.Partition partition,
+            ChipSource.Partition partition,
             Map<String, String> columnReplace) throws IOException {
         return createChipFromFile(filePath, tableName, partition, columnReplace, null);
     }
 
     /**
-     * Creates a chip from a file source with partition, column replace, and S3 storage configuration
+     * Creates a chip from a file source with partition, column replace, and S3
+     * storage configuration
      *
      * @param filePath      Path to the file on the server
      * @param tableName     Optional table name for the chip
@@ -244,19 +248,19 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public String createChipFromFile(String filePath, String tableName,
-            CreateChipCommand.Request.Source.Partition partition,
+            ChipSource.Partition partition,
             Map<String, String> columnReplace,
-            CreateChipCommand.S3StorageConfig storageConfig) throws IOException {
-        CreateChipCommand.Request request = new CreateChipCommand.Request();
+            S3StorageConfig storageConfig) throws IOException {
+        CreateChipRequest request = new CreateChipRequest();
         request.setSourceType(SourceType.FILE);
-        request.setSource(CreateChipCommand.Request.Source.builder()
+        request.setSource(ChipSource.builder()
                 .filePath(filePath)
                 .tableName(tableName)
                 .partition(partition)
                 .columnReplace(columnReplace)
                 .build());
         request.setStorageConfig(storageConfig);
-        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
+        CreateChipResponse response = post("/lathe/stage/data", request, CreateChipResponse.class);
         if (response.getError() != null) {
             throw new IOException("Failed to stage file: " + response.getError());
         }
@@ -287,16 +291,16 @@ public class DatalatheClient {
      */
     public String createChipFromS3(String s3Path, String tableName,
             Map<String, String> columnReplace,
-            CreateChipCommand.S3StorageConfig storageConfig) throws IOException {
-        CreateChipCommand.Request request = new CreateChipCommand.Request();
+            S3StorageConfig storageConfig) throws IOException {
+        CreateChipRequest request = new CreateChipRequest();
         request.setSourceType(SourceType.S3);
-        request.setSource(CreateChipCommand.Request.Source.builder()
+        request.setSource(ChipSource.builder()
                 .s3Path(s3Path)
                 .tableName(tableName)
                 .columnReplace(columnReplace)
                 .build());
         request.setStorageConfig(storageConfig);
-        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
+        CreateChipResponse response = post("/lathe/stage/data", request, CreateChipResponse.class);
         if (response.getError() != null) {
             throw new IOException("Failed to create chip from S3: " + response.getError());
         }
@@ -307,7 +311,8 @@ public class DatalatheClient {
      * Creates a new chip from existing chip(s) as the data source.
      *
      * @param sourceChipIds The chip ID(s) to use as source data
-     * @param query         Optional SQL query to transform the data (runs against source chip tables)
+     * @param query         Optional SQL query to transform the data (runs against
+     *                      source chip tables)
      * @param tableName     Optional table name for the new chip
      * @return The chip ID
      * @throws IOException if the API call fails
@@ -320,23 +325,24 @@ public class DatalatheClient {
      * Creates a new chip from existing chip(s) with S3 storage configuration.
      *
      * @param sourceChipIds The chip ID(s) to use as source data
-     * @param query         Optional SQL query to transform the data (runs against source chip tables)
+     * @param query         Optional SQL query to transform the data (runs against
+     *                      source chip tables)
      * @param tableName     Optional table name for the new chip
      * @param storageConfig Optional S3 storage configuration (bucket, prefix, TTL)
      * @return The chip ID
      * @throws IOException if the API call fails
      */
     public String createChipFromChip(List<String> sourceChipIds, String query, String tableName,
-            CreateChipCommand.S3StorageConfig storageConfig) throws IOException {
-        CreateChipCommand.Request request = new CreateChipCommand.Request();
-        request.setSourceType(SourceType.CACHE);
-        request.setSource(CreateChipCommand.Request.Source.builder()
+            S3StorageConfig storageConfig) throws IOException {
+        CreateChipRequest request = new CreateChipRequest();
+        request.setSourceType(SourceType.CHIP);
+        request.setSource(ChipSource.builder()
                 .sourceChipIds(sourceChipIds)
                 .query(query)
                 .tableName(tableName)
                 .build());
         request.setStorageConfig(storageConfig);
-        CreateChipCommand.Response response = sendCommand(new CreateChipCommand(request));
+        CreateChipResponse response = post("/lathe/stage/data", request, CreateChipResponse.class);
         if (response.getError() != null) {
             throw new IOException("Failed to create chip from chip: " + response.getError());
         }
@@ -350,18 +356,7 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public void deleteChip(String chipId) throws IOException {
-        Request httpRequest = new Request.Builder()
-                .url(baseUrl + "/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8))
-                .delete()
-                .build();
-
-        logger.debug("Deleting chip: {}", chipId);
-
-        try (Response response = client.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to delete chip: " + response.code() + " " + response.body().string());
-            }
-        }
+        httpDelete("/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8));
     }
 
     // --- Connection management ---
@@ -369,25 +364,15 @@ public class DatalatheClient {
     /**
      * Lists all database connections (passwords excluded).
      */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, String>> listConnections() throws IOException {
-        Request httpRequest = new Request.Builder()
-                .url(baseUrl + "/lathe/connections")
-                .get()
-                .build();
-
-        try (Response response = client.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to list connections: " + response.code());
-            }
-            return objectMapper.readValue(response.body().string(), List.class);
-        }
+    public List<ConnectionInfo> listConnections() throws IOException {
+        return Arrays.asList(get("/lathe/connections", ConnectionInfo[].class));
     }
 
     /**
      * Creates or updates a database connection.
      */
-    public Map<String, String> upsertConnection(String alias, String host, String port, String database, String user, String password) throws IOException {
+    public ConnectionInfo upsertConnection(String alias, String host, String port, String database, String user,
+            String password) throws IOException {
         Map<String, String> body = new HashMap<>();
         body.put("host", host);
         body.put("port", port);
@@ -395,68 +380,22 @@ public class DatalatheClient {
         body.put("user", user);
         body.put("password", password);
 
-        Request httpRequest = new Request.Builder()
-                .url(baseUrl + "/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8))
-                .put(RequestBody.create(objectMapper.writeValueAsString(body), JSON))
-                .build();
-
-        try (Response response = client.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to upsert connection: " + response.code() + " " + response.body().string());
-            }
-            return objectMapper.readValue(response.body().string(), Map.class);
-        }
+        return put("/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8), body, ConnectionInfo.class);
     }
 
     /**
      * Deletes a database connection.
      */
     public void deleteConnection(String alias) throws IOException {
-        Request httpRequest = new Request.Builder()
-                .url(baseUrl + "/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8))
-                .delete()
-                .build();
-
-        try (Response response = client.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to delete connection: " + response.code());
-            }
-        }
+        httpDelete("/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8));
     }
 
     /**
      * Tests a database connection by attempting a MySQL attach in DuckDB.
      */
-    public Map<String, String> testConnection(String alias) throws IOException {
-        Request httpRequest = new Request.Builder()
-                .url(baseUrl + "/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8) + "/test")
-                .post(RequestBody.create("{}", JSON))
-                .build();
-
-        try (Response response = client.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to test connection: " + response.code() + " " + response.body().string());
-            }
-            return objectMapper.readValue(response.body().string(), Map.class);
-        }
-    }
-
-    /**
-     * Sends a GET request and returns parsed JSON.
-     */
-    @SuppressWarnings("unchecked")
-    private <T> T get(String path, Class<T> responseType) throws IOException {
-        Request httpRequest = new Request.Builder()
-                .url(baseUrl + path)
-                .get()
-                .build();
-
-        try (Response response = client.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("GET " + path + " failed: " + response.code());
-            }
-            return objectMapper.readValue(response.body().string(), responseType);
-        }
+    public ConnectionInfo testConnection(String alias) throws IOException {
+        return post("/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8) + "/test",
+                new HashMap<>(), ConnectionInfo.class);
     }
 
     // --- Database inspection ---
@@ -464,17 +403,15 @@ public class DatalatheClient {
     /**
      * Returns the list of databases available in the engine.
      */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> getDatabases() throws IOException {
-        return get("/lathe/stage/databases", List.class);
+    public List<DatabaseInfo> getDatabases() throws IOException {
+        return Arrays.asList(get("/lathe/stage/databases", DatabaseInfo[].class));
     }
 
     /**
      * Returns the schema (tables and columns) for a given database.
      */
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> getDatabaseSchema(String databaseName) throws IOException {
-        return get("/lathe/stage/schema/" + URLEncoder.encode(databaseName, StandardCharsets.UTF_8), List.class);
+    public List<DatabaseColumn> getDatabaseSchema(String databaseName) throws IOException {
+        return Arrays.asList(get("/lathe/stage/schema/" + URLEncoder.encode(databaseName, StandardCharsets.UTF_8), DatabaseColumn[].class));
     }
 
     // --- Chip listing ---
@@ -483,25 +420,14 @@ public class DatalatheClient {
      * Returns all chips and their metadata.
      */
     public SearchChipsResponse listChips() throws IOException {
-        Request httpRequest = new Request.Builder()
-                .url(baseUrl + "/lathe/chips")
-                .get()
-                .build();
-
-        try (Response response = client.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to list chips: " + response.code());
-            }
-            return objectMapper.readValue(response.body().string(), SearchChipsResponse.class);
-        }
+        return get("/lathe/chips", SearchChipsResponse.class);
     }
 
     /**
      * Gets a database connection by alias (password excluded).
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, String> getConnection(String alias) throws IOException {
-        return get("/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8), Map.class);
+    public ConnectionInfo getConnection(String alias) throws IOException {
+        return get("/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8), ConnectionInfo.class);
     }
 
     // --- License management ---
@@ -509,57 +435,17 @@ public class DatalatheClient {
     /**
      * Gets the current license status.
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> getLicense() throws IOException {
-        return get("/lathe/license", Map.class);
+    public LicenseStatus getLicense() throws IOException {
+        return get("/lathe/license", LicenseStatus.class);
     }
 
     /**
      * Installs or updates the license key.
      */
-    @SuppressWarnings("unchecked")
-    public Map<String, Object> putLicense(String licenseKey) throws IOException {
+    public LicenseStatus putLicense(String licenseKey) throws IOException {
         Map<String, String> body = new HashMap<>();
         body.put("license_key", licenseKey);
-
-        Request httpRequest = new Request.Builder()
-                .url(baseUrl + "/lathe/license")
-                .put(RequestBody.create(objectMapper.writeValueAsString(body), JSON))
-                .build();
-
-        try (Response response = client.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to update license: " + response.code() + " " + response.body().string());
-            }
-            return objectMapper.readValue(response.body().string(), Map.class);
-        }
-    }
-
-    /**
-     * Sends a command to the Datalathe API
-     *
-     * @param command The command to send
-     * @return The response from the API
-     * @throws IOException if the API call fails
-     */
-    public <T extends DatalatheCommandResponse> T sendCommand(DatalatheCommand command) throws IOException {
-        Request httpRequest = new Request.Builder()
-                .url(baseUrl + command.getEndpoint())
-                .post(RequestBody.create(objectMapper.writeValueAsString(command.getRequest()), JSON))
-                .build();
-
-        logger.debug("Sending command: {}", httpRequest.url());
-        logger.debug("Command: {}", objectMapper.writeValueAsString(command.getRequest()));
-
-        try (Response response = client.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to execute command: " + response.code() + " " + response.body().string());
-            }
-
-            String responseBody = response.body().string();
-            return objectMapper.readValue(responseBody,
-                    objectMapper.constructType(command.getResponseType().getClass()));
-        }
+        return put("/lathe/license", body, LicenseStatus.class);
     }
 
     /**
@@ -585,7 +471,7 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public SearchChipsResponse searchChips(String tableName, String partitionValue,
-                                           String tagKey, String tagValue) throws IOException {
+            String tagKey, String tagValue) throws IOException {
         String tag = (tagKey != null && tagValue != null) ? tagKey + ":" + tagValue : null;
 
         StringBuilder url = new StringBuilder(baseUrl).append("/lathe/chips/search");
@@ -651,19 +537,8 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public void deleteChipTag(String chipId, String key) throws IOException {
-        Request httpRequest = new Request.Builder()
-                .url(baseUrl + "/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8)
-                        + "/tags/" + URLEncoder.encode(key, StandardCharsets.UTF_8))
-                .delete()
-                .build();
-
-        logger.debug("Deleting tag '{}' from chip: {}", key, chipId);
-
-        try (Response response = client.newCall(httpRequest).execute()) {
-            if (!response.isSuccessful()) {
-                throw new IOException("Failed to delete chip tag: " + response.code() + " " + response.body().string());
-            }
-        }
+        httpDelete("/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8)
+                + "/tags/" + URLEncoder.encode(key, StandardCharsets.UTF_8));
     }
 
     /**
@@ -674,7 +549,8 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public List<String> extractTables(String query) throws IOException {
-        ExtractTablesCommand.Response response = sendCommand(new ExtractTablesCommand(query));
+        ExtractTablesRequest request = new ExtractTablesRequest(query, null);
+        ExtractTablesResponse response = post("/lathe/query/tables", request, ExtractTablesResponse.class);
         if (response.getError() != null) {
             throw new IOException("Failed to extract tables: " + response.getError());
         }
@@ -686,12 +562,16 @@ public class DatalatheClient {
      * Optionally transforms the query from MySQL/MariaDB syntax to DuckDB.
      *
      * @param query     The SQL query to analyze
-     * @param transform When true, also returns the query transformed to DuckDB syntax
-     * @return The response containing table names and optionally the transformed query
+     * @param transform When true, also returns the query transformed to DuckDB
+     *                  syntax
+     * @return The response containing table names and optionally the transformed
+     *         query
      * @throws IOException if the API call fails
      */
-    public ExtractTablesCommand.Response extractTablesWithTransform(String query, boolean transform) throws IOException {
-        ExtractTablesCommand.Response response = sendCommand(new ExtractTablesCommand(query, transform));
+    public ExtractTablesResponse extractTablesWithTransform(String query, boolean transform)
+            throws IOException {
+        ExtractTablesRequest request = new ExtractTablesRequest(query, transform);
+        ExtractTablesResponse response = post("/lathe/query/tables", request, ExtractTablesResponse.class);
         if (response.getError() != null) {
             throw new IOException("Failed to extract tables: " + response.getError());
         }
@@ -706,7 +586,7 @@ public class DatalatheClient {
      * @return Map of query index to Result
      * @throws IOException if the API call fails
      */
-    public Map<Integer, GenerateReportCommand.Response.Result> generateReport(List<String> chipIds,
+    public Map<Integer, GenerateReportResponse.Result> generateReport(List<String> chipIds,
             List<String> queries) throws IOException {
         return generateReport(chipIds, queries, null, null).getResults();
     }
@@ -714,34 +594,234 @@ public class DatalatheClient {
     /**
      * Executes queries against a list of chip IDs with transform query support
      *
-     * @param chipIds               List of chip IDs to query
-     * @param queries               List of SQL queries to execute
-     * @param transformQuery        If true, transform queries from MariaDB to DuckDB syntax
-     * @param returnTransformedQuery If true, include the transformed query in results
+     * @param chipIds                List of chip IDs to query
+     * @param queries                List of SQL queries to execute
+     * @param transformQuery         If true, transform queries from MariaDB to
+     *                               DuckDB syntax
+     * @param returnTransformedQuery If true, include the transformed query in
+     *                               results
      * @return GenerateReportResult containing results map and timing metadata
      * @throws IOException if the API call fails
      */
     public GenerateReportResult generateReport(List<String> chipIds, List<String> queries,
             Boolean transformQuery, Boolean returnTransformedQuery) throws IOException {
-        GenerateReportCommand.Request request = new GenerateReportCommand.Request();
-        request.setSourceType(SourceType.LOCAL);
-        request.setQueryRequest(new GenerateReportCommand.Request.Queries(queries));
+        GenerateReportRequest request = new GenerateReportRequest();
+        request.setSourceType(SourceType.CHIP);
+        request.setQueryRequest(new GenerateReportRequest.Queries(queries));
         request.setChipIds(chipIds);
         request.setTransformQuery(transformQuery);
         request.setReturnTransformedQuery(returnTransformedQuery);
 
-        GenerateReportCommand.Response response = sendCommand(new GenerateReportCommand(request));
+        GenerateReportResponse response = post("/lathe/report", request, GenerateReportResponse.class);
 
-        Map<Integer, GenerateReportCommand.Response.Result> results = new HashMap<>();
+        Map<Integer, GenerateReportResponse.Result> results = new HashMap<>();
         if (response.getResult() != null) {
-            for (Map.Entry<String, GenerateReportCommand.Response.Result> entry : response
+            for (Map.Entry<String, GenerateReportResponse.Result> entry : response
                     .getResult().entrySet()) {
                 int idx = Integer.parseInt(entry.getKey());
-                GenerateReportCommand.Response.Result result = entry.getValue();
+                GenerateReportResponse.Result result = entry.getValue();
                 results.put(idx, result);
             }
         }
 
         return new GenerateReportResult(results, response.getTiming());
+    }
+
+    // --- AI Credential methods ---
+
+    /**
+     * Creates a new AI credential.
+     *
+     * @param name         Display name for the credential
+     * @param provider     AI provider (e.g. "anthropic", "openai")
+     * @param apiKey       API key for the provider
+     * @param defaultModel Optional default model to use
+     * @return The created credential
+     * @throws IOException if the API call fails
+     */
+    public AiCredential createAiCredential(String name, String provider, String apiKey,
+            String defaultModel) throws IOException {
+        CreateAiCredentialRequest request = CreateAiCredentialRequest.builder()
+                .name(name)
+                .provider(provider)
+                .apiKey(apiKey)
+                .defaultModel(defaultModel)
+                .build();
+        return post("/lathe/ai/credentials", request, AiCredential.class);
+    }
+
+    /**
+     * Lists all AI credentials (API keys excluded).
+     */
+    public List<AiCredential> listAiCredentials() throws IOException {
+        return Arrays.asList(get("/lathe/ai/credentials", AiCredential[].class));
+    }
+
+    /**
+     * Deletes an AI credential.
+     */
+    public void deleteAiCredential(String credentialId) throws IOException {
+        httpDelete("/lathe/ai/credentials/" + URLEncoder.encode(credentialId, StandardCharsets.UTF_8));
+    }
+
+    // --- AI Context methods ---
+
+    /**
+     * Creates a new AI context for natural language queries.
+     *
+     * @param name                   Display name for the context
+     * @param credentialId           Unused (kept for backwards compatibility)
+     * @param chipIds                Chip IDs to include in the context
+     * @param columnDescriptions     Column descriptions keyed by table name then column name
+     * @param dataRelationshipPrompt Description of how the data tables relate to each other
+     * @return The created context
+     * @throws IOException if the API call fails
+     */
+    public AiContext createAiContext(String name, String credentialId, List<String> chipIds,
+            Map<String, Map<String, String>> columnDescriptions, String dataRelationshipPrompt) throws IOException {
+        CreateAiContextRequest request = CreateAiContextRequest.builder()
+                .name(name)
+                .chipIds(chipIds)
+                .columnDescriptions(columnDescriptions)
+                .dataRelationshipPrompt(dataRelationshipPrompt)
+                .build();
+        return post("/lathe/ai/contexts", request, AiContext.class);
+    }
+
+    /**
+     * Lists all AI contexts.
+     */
+    public List<AiContext> listAiContexts() throws IOException {
+        return Arrays.asList(get("/lathe/ai/contexts", AiContext[].class));
+    }
+
+    /**
+     * Gets an AI context by ID.
+     */
+    public AiContext getAiContext(String contextId) throws IOException {
+        return get("/lathe/ai/contexts/" + URLEncoder.encode(contextId, StandardCharsets.UTF_8),
+                AiContext.class);
+    }
+
+    /**
+     * Updates an AI context. Only non-null fields in the request are applied.
+     *
+     * @param contextId The context ID to update
+     * @param updates   The fields to update
+     * @return The updated context
+     * @throws IOException if the API call fails
+     */
+    public AiContext updateAiContext(String contextId, UpdateAiContextRequest updates)
+            throws IOException {
+        return put("/lathe/ai/contexts/" + URLEncoder.encode(contextId, StandardCharsets.UTF_8), updates,
+                AiContext.class);
+    }
+
+    /**
+     * Deletes an AI context.
+     */
+    public void deleteAiContext(String contextId) throws IOException {
+        httpDelete("/lathe/ai/contexts/" + URLEncoder.encode(contextId, StandardCharsets.UTF_8));
+    }
+
+    // --- AI Query methods ---
+
+    /**
+     * Executes a natural language query against an AI context.
+     *
+     * @param contextId    The AI context to query
+     * @param credentialId The AI credential to use
+     * @param question     The natural language question
+     * @return The query response with data, SQL, and optional visualization
+     * @throws IOException if the API call fails
+     */
+    public AiQueryResponse aiQuery(String contextId, String credentialId, String question)
+            throws IOException {
+        return aiQuery(contextId, credentialId, question, null, null);
+    }
+
+    /**
+     * Executes a natural language query with conversation history and model override.
+     *
+     * @param contextId           The AI context to query
+     * @param credentialId        The AI credential to use
+     * @param question            The natural language question
+     * @param conversationHistory Optional prior conversation turns for context
+     * @param model               Optional model override
+     * @return The query response with data, SQL, and optional visualization
+     * @throws IOException if the API call fails
+     */
+    public AiQueryResponse aiQuery(String contextId, String credentialId, String question,
+            List<ConversationTurn> conversationHistory, String model) throws IOException {
+        AiQueryRequest request = AiQueryRequest.builder()
+                .contextId(contextId)
+                .credentialId(credentialId)
+                .userQuestion(question)
+                .conversationHistory(conversationHistory)
+                .model(model)
+                .build();
+        return post("/lathe/ai/query", request, AiQueryResponse.class);
+    }
+
+    // --- HTTP helpers ---
+
+    @SuppressWarnings("unchecked")
+    private <T> T get(String path, Class<T> responseType) throws IOException {
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + path)
+                .get()
+                .build();
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("GET " + path + " failed: " + response.code());
+            }
+            return objectMapper.readValue(response.body().string(), responseType);
+        }
+    }
+
+    private <T> T post(String path, Object body, Class<T> responseType) throws IOException {
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + path)
+                .post(RequestBody.create(objectMapper.writeValueAsString(body), JSON))
+                .build();
+
+        logger.debug("POST {}: {}", path, objectMapper.writeValueAsString(body));
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("POST " + path + " failed: " + response.code() + " "
+                        + response.body().string());
+            }
+            return objectMapper.readValue(response.body().string(), responseType);
+        }
+    }
+
+    private <T> T put(String path, Object body, Class<T> responseType) throws IOException {
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + path)
+                .put(RequestBody.create(objectMapper.writeValueAsString(body), JSON))
+                .build();
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("PUT " + path + " failed: " + response.code() + " "
+                        + response.body().string());
+            }
+            return objectMapper.readValue(response.body().string(), responseType);
+        }
+    }
+
+    private void httpDelete(String path) throws IOException {
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + path)
+                .delete()
+                .build();
+
+        try (Response response = client.newCall(httpRequest).execute()) {
+            if (!response.isSuccessful()) {
+                throw new IOException("DELETE " + path + " failed: " + response.code());
+            }
+        }
     }
 }

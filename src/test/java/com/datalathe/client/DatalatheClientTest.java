@@ -1,6 +1,6 @@
 package com.datalathe.client;
 
-import com.datalathe.client.command.impl.GenerateReportCommand;
+import com.datalathe.client.types.GenerateReportResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -91,7 +91,7 @@ public class DatalatheClientTest {
                                 .setBody(responseJson));
 
                 // Execute test
-                Map<Integer, GenerateReportCommand.Response.Result> results = client.generateReport(chipIds,
+                Map<Integer, GenerateReportResponse.Result> results = client.generateReport(chipIds,
                                 queries);
 
                 // Verify results
@@ -123,7 +123,7 @@ public class DatalatheClientTest {
                 assertEquals(1, server.getRequestCount());
                 String request = server.takeRequest().getBody().readUtf8();
                 assertTrue(request.contains("\"chip_id\":[\"chip1\",\"chip2\"]"));
-                assertTrue(request.contains("\"source_type\":\"LOCAL\""));
+                assertTrue(request.contains("\"source_type\":\"CHIP\""));
                 assertTrue(request.contains("\"query\":[\"SELECT * FROM users\",\"SELECT * FROM orders\"]"));
         }
 
@@ -147,7 +147,7 @@ public class DatalatheClientTest {
                                 .setBody(responseJson));
 
                 // Execute test
-                Map<Integer, GenerateReportCommand.Response.Result> results = client.generateReport(chipIds,
+                Map<Integer, GenerateReportResponse.Result> results = client.generateReport(chipIds,
                                 queries);
 
                 // Verify results - error entry is still included in results map
