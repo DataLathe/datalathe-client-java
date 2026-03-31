@@ -8,8 +8,7 @@ import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.*;
 
 /**
  * Resolves the set of chips needed for a report, creating any that are missing.
@@ -60,13 +59,28 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ChipResolver {
 
     private static final Logger log = LogManager.getLogger(ChipResolver.class);
+    private static final long DEFAULT_TIMEOUT_MINUTES = 10;
 
     private final DatalatheClient client;
+    private final ExecutorService executor;
+    private final long timeoutMinutes;
     private final ConcurrentHashMap<String, CompletableFuture<String>> inflight =
             new ConcurrentHashMap<>();
 
     public ChipResolver(DatalatheClient client) {
+        this(client, Executors.newFixedThreadPool(
+                Math.max(4, Runtime.getRuntime().availableProcessors()),
+                r -> {
+                    Thread t = new Thread(r, "chip-resolver");
+                    t.setDaemon(true);
+                    return t;
+                }), DEFAULT_TIMEOUT_MINUTES);
+    }
+
+    public ChipResolver(DatalatheClient client, ExecutorService executor, long timeoutMinutes) {
         this.client = client;
+        this.executor = executor;
+        this.timeoutMinutes = timeoutMinutes;
     }
 
     /**
@@ -152,6 +166,7 @@ public class ChipResolver {
         List<String> existingUnpartitionedIds = new ArrayList<>();
         List<String> existingPartitionedIds = new ArrayList<>();
         Set<String> pvSet = new HashSet<>(partitionValues);
+        String keyPrefix = tagKey + ":" + tagValue + "|";
 
         if (existing.getChips() != null) {
             for (var chip : existing.getChips()) {
@@ -161,10 +176,13 @@ public class ChipResolver {
                         && chip.getChipId().equals(chip.getSubChipId())
                         && existingUnpartitionedTables.add(table)) {
                     existingUnpartitionedIds.add(chip.getChipId());
+                    // Chip is now searchable — evict from inflight cache
+                    inflight.remove(keyPrefix + table + "|" + null);
                 } else if (partitionedTables.contains(table)
                         && pvSet.contains(chip.getPartitionValue())
                         && existingPartitionedKeys.add(table + "|" + chip.getPartitionValue())) {
                     existingPartitionedIds.add(chip.getChipId());
+                    inflight.remove(keyPrefix + table + "|" + chip.getPartitionValue());
                 }
             }
         }
@@ -241,16 +259,17 @@ public class ChipResolver {
                     .supplyAsync(() -> {
                         try {
                             ChipSource source = factory.buildSource(table, partitionValue);
-                            String chipId = client.createChip(source);
-                            client.addChipTags(chipId, Map.of(tagKey, tagValue));
-                            return chipId;
+                            return client.createChip(source, null, Map.of(tagKey, tagValue));
                         } catch (IOException e) {
                             log.error("Chip creation failed for table={} partition={}",
                                     table, partitionValue, e);
                             return null;
                         }
-                    })
-                    .whenComplete((id, ex) -> inflight.remove(key));
+                    }, executor)
+                    .orTimeout(timeoutMinutes, TimeUnit.MINUTES)
+                    .whenComplete((id, ex) -> {
+                        if (id == null || ex != null) inflight.remove(key);
+                    });
         });
     }
 
