@@ -1,9 +1,13 @@
 package com.datalathe.client;
 
+import com.datalathe.client.types.AiQueryRequest;
+import com.datalathe.client.types.AiQueryResponse;
+import com.datalathe.client.types.ConversationTurn;
 import com.datalathe.client.types.GenerateReportResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -216,5 +220,92 @@ public class DatalatheClientTest {
                 // Verify timing is present
                 assertNotNull(reportResult.getTiming());
                 assertEquals(100, reportResult.getTiming().getTotalMs());
+        }
+
+        @Test
+        public void testAiQueryWithSessionId() throws Exception {
+                String responseJson = "{" +
+                        "\"request_id\":\"req1\"," +
+                        "\"explanation\":\"Total revenue is $1M\"," +
+                        "\"generated_sql\":\"SELECT SUM(revenue) FROM sales\"," +
+                        "\"assistant_turn\":{\"role\":\"assistant\",\"content\":\"Total revenue is $1M\"}," +
+                        "\"session_id\":\"sess-abc\"" +
+                        "}";
+
+                server.enqueue(new MockResponse()
+                        .setResponseCode(200)
+                        .setBody(responseJson));
+
+                AiQueryResponse result = client.aiQuery(AiQueryRequest.builder()
+                        .contextId("ctx1")
+                        .userQuestion("What is total revenue?")
+                        .sessionId("sess-abc")
+                        .build());
+
+                assertEquals("sess-abc", result.getSessionId());
+                assertNotNull(result.getAssistantTurn());
+                assertEquals("assistant", result.getAssistantTurn().getRole());
+                assertEquals("Total revenue is $1M", result.getAssistantTurn().getContent());
+
+                RecordedRequest request = server.takeRequest();
+                String body = request.getBody().readUtf8();
+                assertTrue(body.contains("\"session_id\":\"sess-abc\""));
+                assertTrue(body.contains("\"context_id\":\"ctx1\""));
+                assertFalse(body.contains("\"credential_id\""));
+        }
+
+        @Test
+        public void testAiConversation() throws Exception {
+                String response1Json = "{" +
+                        "\"request_id\":\"req1\"," +
+                        "\"explanation\":\"Revenue is $1M\"," +
+                        "\"assistant_turn\":{\"role\":\"assistant\",\"content\":\"Revenue is $1M\"}" +
+                        "}";
+                String response2Json = "{" +
+                        "\"request_id\":\"req2\"," +
+                        "\"explanation\":\"By region: US $600K, EU $400K\"," +
+                        "\"assistant_turn\":{\"role\":\"assistant\",\"content\":\"By region: US $600K, EU $400K\"}" +
+                        "}";
+
+                server.enqueue(new MockResponse().setResponseCode(200).setBody(response1Json));
+                server.enqueue(new MockResponse().setResponseCode(200).setBody(response2Json));
+
+                AiConversation conversation = client.aiConversation("ctx1", "cred1");
+
+                AiQueryResponse r1 = conversation.ask("What is total revenue?");
+                assertEquals("Revenue is $1M", r1.getExplanation());
+
+                // First call should have no conversation history
+                RecordedRequest req1 = server.takeRequest();
+                String body1 = req1.getBody().readUtf8();
+                assertFalse(body1.contains("conversation_history"));
+
+                AiQueryResponse r2 = conversation.ask("Break that down by region");
+                assertEquals("By region: US $600K, EU $400K", r2.getExplanation());
+
+                // Second call should include history
+                RecordedRequest req2 = server.takeRequest();
+                String body2 = req2.getBody().readUtf8();
+                assertTrue(body2.contains("conversation_history"));
+                assertTrue(body2.contains("What is total revenue?"));
+                assertTrue(body2.contains("Revenue is $1M"));
+
+                // History should have 4 turns
+                List<ConversationTurn> history = conversation.getHistory();
+                assertEquals(4, history.size());
+                assertEquals("user", history.get(0).getRole());
+                assertEquals("What is total revenue?", history.get(0).getContent());
+                assertEquals("assistant", history.get(3).getRole());
+        }
+
+        @Test
+        public void testDeleteAiSession() throws Exception {
+                server.enqueue(new MockResponse().setResponseCode(200));
+
+                client.deleteAiSession("sess-abc");
+
+                RecordedRequest request = server.takeRequest();
+                assertEquals("DELETE", request.getMethod());
+                assertTrue(request.getPath().contains("/lathe/ai/sessions/sess-abc"));
         }
 }
