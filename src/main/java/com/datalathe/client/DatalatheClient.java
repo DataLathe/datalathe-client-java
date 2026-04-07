@@ -784,6 +784,39 @@ public class DatalatheClient {
         return post("/lathe/ai/query", request, AiQueryResponse.class);
     }
 
+    /**
+     * Executes a natural language query using a pre-built request.
+     * Use this for session-based queries or when the credential is bound to the context.
+     *
+     * @param request The query request
+     * @return The query response (includes sessionId for follow-up queries)
+     * @throws IOException if the API call fails
+     */
+    public AiQueryResponse aiQuery(AiQueryRequest request) throws IOException {
+        return post("/lathe/ai/query", request, AiQueryResponse.class);
+    }
+
+    /**
+     * Creates a client-side conversation helper that tracks history locally.
+     *
+     * @param contextId    The AI context to query
+     * @param credentialId The AI credential to use
+     * @return An AiConversation that manages conversation turns
+     */
+    public AiConversation aiConversation(String contextId, String credentialId) {
+        return new AiConversation(this, contextId, credentialId);
+    }
+
+    /**
+     * Deletes a server-managed AI session.
+     *
+     * @param sessionId The session to delete
+     * @throws IOException if the API call fails
+     */
+    public void deleteAiSession(String sessionId) throws IOException {
+        httpDelete("/lathe/ai/sessions/" + URLEncoder.encode(sessionId, StandardCharsets.UTF_8));
+    }
+
     // --- HTTP helpers ---
 
     private <T> T get(String path, Class<T> responseType) throws IOException {
