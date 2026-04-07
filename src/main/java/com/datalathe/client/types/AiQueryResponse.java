@@ -33,6 +33,14 @@ public class AiQueryResponse {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String generatedSql;
 
+    @JsonProperty("assistant_turn")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private ConversationTurn assistantTurn;
+
+    @JsonProperty("session_id")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String sessionId;
+
     @JsonProperty("usage")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private LlmUsage usage;

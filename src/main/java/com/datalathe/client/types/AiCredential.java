@@ -1,5 +1,6 @@
 package com.datalathe.client.types;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -10,6 +11,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class AiCredential {
     @JsonProperty("credential_id")
     private String credentialId;
@@ -25,4 +27,7 @@ public class AiCredential {
 
     @JsonProperty("created_at")
     private long createdAt;
+
+    @JsonProperty("tenant_id")
+    private String tenantId;
 }

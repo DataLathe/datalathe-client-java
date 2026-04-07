@@ -18,6 +18,7 @@ public class AiQueryRequest {
     private String contextId;
 
     @JsonProperty("credential_id")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String credentialId;
 
     @JsonProperty("user_question")
@@ -26,6 +27,10 @@ public class AiQueryRequest {
     @JsonProperty("conversation_history")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private List<ConversationTurn> conversationHistory;
+
+    @JsonProperty("session_id")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String sessionId;
 
     @JsonProperty("model")
     @JsonInclude(JsonInclude.Include.NON_NULL)
