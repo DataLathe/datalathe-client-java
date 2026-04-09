@@ -2,7 +2,6 @@ package com.datalathe.client;
 
 import com.datalathe.client.types.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
 import okhttp3.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -13,17 +12,67 @@ import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
-@RequiredArgsConstructor
 public class DatalatheClient {
     private static final Logger logger = LogManager.getLogger(DatalatheClient.class);
     private final String baseUrl;
-    private final OkHttpClient client = new OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.MINUTES)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build();
+    private final Map<String, String> defaultHeaders;
+    private final OkHttpClient client;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
+
+    /**
+     * Constructs a client without any default headers. Equivalent to
+     * {@code new DatalatheClient(baseUrl, Collections.emptyMap())}.
+     *
+     * <p>This constructor is backward compatible with the previous
+     * Lombok-generated single-arg constructor, so customer code calling
+     * {@code new DatalatheClient(url)} continues to work unchanged.</p>
+     *
+     * @param baseUrl the datalathe engine base URL (e.g. {@code http://host:3000})
+     */
+    public DatalatheClient(String baseUrl) {
+        this(baseUrl, Collections.emptyMap());
+    }
+
+    /**
+     * Constructs a client that adds the given headers to every outbound
+     * HTTP request. Headers are applied via an OkHttp {@link okhttp3.Interceptor}
+     * and take effect on ALL calls this client makes, including
+     * {@code get}, {@code post}, {@code put}, {@code delete}, and the
+     * hand-built {@link Request.Builder} in {@link #searchChips}.
+     *
+     * <p>Passing {@link Collections#emptyMap()} is equivalent to the
+     * single-arg constructor — no Interceptor is added when the map is
+     * empty.</p>
+     *
+     * <p>The map is defensively copied via {@link Map#copyOf}, so
+     * later mutations to the caller's map do not affect this client.</p>
+     *
+     * @param baseUrl        the datalathe engine base URL
+     * @param defaultHeaders headers to apply to every outbound request;
+     *                       pass an empty map for none
+     */
+    public DatalatheClient(String baseUrl, Map<String, String> defaultHeaders) {
+        this.baseUrl = baseUrl;
+        this.defaultHeaders = Map.copyOf(defaultHeaders);
+
+        OkHttpClient.Builder builder = new OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(5, TimeUnit.MINUTES)
+                .writeTimeout(30, TimeUnit.SECONDS);
+
+        if (!this.defaultHeaders.isEmpty()) {
+            builder.addInterceptor(chain -> {
+                Request.Builder rb = chain.request().newBuilder();
+                for (Map.Entry<String, String> e : this.defaultHeaders.entrySet()) {
+                    rb.header(e.getKey(), e.getValue());
+                }
+                return chain.proceed(rb.build());
+            });
+        }
+
+        this.client = builder.build();
+    }
 
     /**
      * Creates a chip from a source request
