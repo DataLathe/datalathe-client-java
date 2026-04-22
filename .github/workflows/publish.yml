@@ -1,0 +1,100 @@
+name: Publish to Maven Central
+
+# Triggers on every `vX.Y.Z` tag push. The job:
+#   1. Imports the GPG private key (used by maven-gpg-plugin to sign artifacts)
+#   2. Configures Maven with Sonatype Central Portal credentials in
+#      ~/.m2/settings.xml under the server id `central` (matches the
+#      <publishingServerId>central</publishingServerId> in pom.xml)
+#   3. Runs `mvn deploy -DskipTests` — the central-publishing-maven-plugin
+#      uploads + auto-publishes (autoPublish=true, waitUntil=published)
+#
+# Required secrets:
+#   - MAVEN_GPG               GPG passphrase (unlocks the imported key for signing)
+#   - MAVEN_GPG_PRIVATE_KEY   ASCII-armored GPG private key (full block including headers)
+#   - MAVEN_CENTRAL_USERNAME  Sonatype Central Portal username (token user)
+#   - MAVEN_CENTRAL_PASSWORD  Sonatype Central Portal token
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or ref to publish (e.g. v1.2.9)"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build, sign, and deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          # Wires Maven to use these env vars when authenticating against
+          # the server id `central` (referenced by central-publishing-maven-plugin).
+          server-id: central
+          server-username: MAVEN_CENTRAL_USERNAME
+          server-password: MAVEN_CENTRAL_PASSWORD
+          # Imports the GPG key so maven-gpg-plugin can sign artifacts.
+          # The plugin still needs the passphrase, passed at the mvn invocation.
+          gpg-private-key: ${{ secrets.MAVEN_GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+          cache: maven
+
+      - name: Verify tag matches pom version
+        # Catches the failure mode where a `v1.2.9` tag is pushed but
+        # pom.xml still says 1.2.8 — would publish the wrong version
+        # silently otherwise.
+        run: |
+          set -eu
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          if [ -n "${{ inputs.ref }}" ]; then
+            TAG_VERSION="${{ inputs.ref }}"
+            TAG_VERSION="${TAG_VERSION#v}"
+          fi
+          POM_VERSION=$(mvn -B help:evaluate -Dexpression=project.version -q -DforceStdout)
+          if [ "$TAG_VERSION" != "$POM_VERSION" ]; then
+            echo "::error::tag version ($TAG_VERSION) does not match pom version ($POM_VERSION)"
+            exit 1
+          fi
+          echo "tag and pom both at $POM_VERSION ✓"
+
+      - name: Deploy to Maven Central
+        env:
+          MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG }}
+        run: mvn -B -DskipTests deploy
+
+      - name: Confirm artifact landed
+        run: |
+          set -eu
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ -n "${{ inputs.ref }}" ]; then
+            VERSION="${{ inputs.ref }}"
+            VERSION="${VERSION#v}"
+          fi
+          URL="https://repo1.maven.org/maven2/com/datalathe/datalathe-client/${VERSION}/datalathe-client-${VERSION}.pom"
+          # Central Portal's autoPublish has already returned by this point
+          # but the CDN can take a few minutes to propagate. Poll for up to 5 min.
+          for i in $(seq 1 30); do
+            STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$URL")
+            if [ "$STATUS" = "200" ]; then
+              echo "$URL is live (HTTP 200) after ${i} attempts"
+              exit 0
+            fi
+            echo "attempt $i: HTTP $STATUS, retrying in 10s"
+            sleep 10
+          done
+          echo "::warning::$URL not yet live after 5 min — may still be propagating. Check manually."
