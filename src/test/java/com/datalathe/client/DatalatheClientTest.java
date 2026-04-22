@@ -308,4 +308,59 @@ public class DatalatheClientTest {
                 assertEquals("DELETE", request.getMethod());
                 assertTrue(request.getPath().contains("/lathe/ai/sessions/sess-abc"));
         }
+
+        @Test
+        public void testChipNotFoundExceptionOnStructured404() throws Exception {
+                // Wire format contract with the engine: HTTP 404 + body
+                // {error_code: "chip_not_found", chip_id: ...} → ChipNotFoundException.
+                server.enqueue(new MockResponse()
+                                .setResponseCode(404)
+                                .setHeader("Content-Type", "application/json")
+                                .setBody("{\"error\":\"Chip 'abc123' is not available (may have expired)\","
+                                                + "\"error_code\":\"chip_not_found\",\"chip_id\":\"abc123\"}"));
+
+                try {
+                        client.generateReport(Arrays.asList("abc123"), Arrays.asList("SELECT 1"));
+                        fail("Expected ChipNotFoundException");
+                } catch (ChipNotFoundException e) {
+                        assertEquals("abc123", e.getChipId());
+                        // Back-compat: still catchable as IOException.
+                        assertTrue(e instanceof IOException);
+                }
+        }
+
+        @Test
+        public void testFallsBackToIOExceptionWhenErrorCodeMissing() throws Exception {
+                server.enqueue(new MockResponse()
+                                .setResponseCode(404)
+                                .setHeader("Content-Type", "application/json")
+                                .setBody("{\"error\":\"Some other 404\"}"));
+
+                try {
+                        client.generateReport(Arrays.asList("x"), Arrays.asList("SELECT 1"));
+                        fail("Expected IOException");
+                } catch (ChipNotFoundException e) {
+                        fail("Should not have thrown ChipNotFoundException");
+                } catch (IOException expected) {
+                        // OK
+                }
+        }
+
+        @Test
+        public void test500WithChipNotFoundCodeIsNotMisclassified() throws Exception {
+                // Defense in depth: only 404 should be inspected for the typed code.
+                server.enqueue(new MockResponse()
+                                .setResponseCode(500)
+                                .setHeader("Content-Type", "application/json")
+                                .setBody("{\"error_code\":\"chip_not_found\",\"chip_id\":\"abc\"}"));
+
+                try {
+                        client.generateReport(Arrays.asList("abc"), Arrays.asList("SELECT 1"));
+                        fail("Expected IOException");
+                } catch (ChipNotFoundException e) {
+                        fail("500 must not be classified as ChipNotFoundException");
+                } catch (IOException expected) {
+                        // OK
+                }
+        }
 }
