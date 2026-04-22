@@ -1,6 +1,7 @@
 package com.datalathe.client;
 
 import com.datalathe.client.types.*;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
 import org.apache.logging.log4j.LogManager;
@@ -491,6 +492,19 @@ public class DatalatheClient {
     }
 
     /**
+     * Fetches a single chip (with sub-chips, metadata, and tags) by ID.
+     *
+     * @param chipId The chip ID to fetch.
+     * @return The chip's sub-chips, metadata, and tags.
+     * @throws ChipNotFoundException when the chip does not exist.
+     * @throws IOException for other API failures.
+     */
+    public SearchChipsResponse getChip(String chipId) throws IOException {
+        return get("/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8),
+                SearchChipsResponse.class);
+    }
+
+    /**
      * Gets a database connection by alias (password excluded).
      */
     public ConnectionInfo getConnection(String alias) throws IOException {
@@ -875,10 +889,11 @@ public class DatalatheClient {
                 .build();
 
         try (Response response = client.newCall(httpRequest).execute()) {
+            String responseBody = response.body() != null ? response.body().string() : "";
             if (!response.isSuccessful()) {
-                throw new IOException("GET " + path + " failed: " + response.code());
+                throwForFailure("GET", path, response.code(), responseBody);
             }
-            return objectMapper.readValue(response.body().string(), responseType);
+            return objectMapper.readValue(responseBody, responseType);
         }
     }
 
@@ -891,11 +906,11 @@ public class DatalatheClient {
         logger.debug("POST {}: {}", path, objectMapper.writeValueAsString(body));
 
         try (Response response = client.newCall(httpRequest).execute()) {
+            String responseBody = response.body() != null ? response.body().string() : "";
             if (!response.isSuccessful()) {
-                throw new IOException("POST " + path + " failed: " + response.code() + " "
-                        + response.body().string());
+                throwForFailure("POST", path, response.code(), responseBody);
             }
-            return objectMapper.readValue(response.body().string(), responseType);
+            return objectMapper.readValue(responseBody, responseType);
         }
     }
 
@@ -906,11 +921,11 @@ public class DatalatheClient {
                 .build();
 
         try (Response response = client.newCall(httpRequest).execute()) {
+            String responseBody = response.body() != null ? response.body().string() : "";
             if (!response.isSuccessful()) {
-                throw new IOException("PUT " + path + " failed: " + response.code() + " "
-                        + response.body().string());
+                throwForFailure("PUT", path, response.code(), responseBody);
             }
-            return objectMapper.readValue(response.body().string(), responseType);
+            return objectMapper.readValue(responseBody, responseType);
         }
     }
 
@@ -922,8 +937,34 @@ public class DatalatheClient {
 
         try (Response response = client.newCall(httpRequest).execute()) {
             if (!response.isSuccessful()) {
-                throw new IOException("DELETE " + path + " failed: " + response.code());
+                String responseBody = response.body() != null ? response.body().string() : "";
+                throwForFailure("DELETE", path, response.code(), responseBody);
             }
         }
+    }
+
+    /**
+     * Inspects a failed HTTP response and throws the most specific exception
+     * available. Falls through to a generic IOException for unrecognized errors.
+     */
+    private void throwForFailure(String method, String path, int statusCode, String body)
+            throws IOException {
+        if (statusCode == 404 && body != null && !body.isEmpty()) {
+            try {
+                JsonNode node = objectMapper.readTree(body);
+                JsonNode codeNode = node.get("error_code");
+                if (codeNode != null && "chip_not_found".equals(codeNode.asText())) {
+                    JsonNode chipIdNode = node.get("chip_id");
+                    JsonNode messageNode = node.get("error");
+                    String chipId = chipIdNode != null ? chipIdNode.asText() : null;
+                    String message = messageNode != null ? messageNode.asText()
+                            : "Chip not available";
+                    throw new ChipNotFoundException(chipId, message);
+                }
+            } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
+                // Body wasn't JSON — fall through to the generic IOException.
+            }
+        }
+        throw new IOException(method + " " + path + " failed: " + statusCode + " " + body);
     }
 }
