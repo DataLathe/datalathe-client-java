@@ -21,7 +21,12 @@ public class CreateAiCredentialRequest {
     @JsonProperty("api_key")
     private String apiKey;
 
+    /** Required by server. */
     @JsonProperty("default_model")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String defaultModel;
+
+    /** Required when {@code provider} is {@code "bedrock"}. */
+    @JsonProperty("region")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String region;
 }
