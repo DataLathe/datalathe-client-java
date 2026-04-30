@@ -21,10 +21,7 @@ public class CreateAiCredentialRequest {
     @JsonProperty("api_key")
     private String apiKey;
 
-    /**
-     * Required. The server-side fallback was removed because hardcoded
-     * per-provider defaults silently rotted as new model versions shipped.
-     */
+    /** Required by server. */
     @JsonProperty("default_model")
     private String defaultModel;
 

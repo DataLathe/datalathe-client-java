@@ -10,14 +10,15 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * Request body for {@code POST /lathe/ai/agent}. The agent endpoint
- * iteratively calls read-only tools against the chips bound to
- * {@code contextId} before producing a final answer.
+ * Request body for {@code POST /lathe/ai/agent}. Use this when the model
+ * needs to explore the chip data with read-only tools before answering;
+ * use {@link AiQueryRequest} for direct text-to-SQL.
  */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class AgentRequest {
     @JsonProperty("context_id")
     private String contextId;
@@ -26,26 +27,20 @@ public class AgentRequest {
     private String userQuestion;
 
     @JsonProperty("credential_id")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String credentialId;
 
     @JsonProperty("session_id")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String sessionId;
 
     @JsonProperty("conversation_history")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     private List<ConversationTurn> conversationHistory;
 
     @JsonProperty("model")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String model;
 
     @JsonProperty("tenant_id")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String tenantId;
 
     @JsonProperty("agent_options")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     private AgentOptions agentOptions;
 }

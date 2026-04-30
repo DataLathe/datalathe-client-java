@@ -872,17 +872,11 @@ public class DatalatheClient {
     }
 
     /**
-     * Sends a natural-language question to the agent endpoint, which
-     * iteratively calls read-only tools against the configured chips before
-     * producing a final answer (with optional attachments and a
-     * chain-of-thought trace). Use this for analytical questions where
-     * the model needs to explore the data; use {@link #aiQuery(AiQueryRequest)}
-     * for direct text-to-SQL.
+     * Use this when the model needs to explore the chip data with read-only
+     * tools before answering; use {@link #aiQuery(AiQueryRequest)} for
+     * direct text-to-SQL.
      *
-     * @param request The agent request (context + question + optional caps)
-     * @return The agent response with answer, attachments, and trace
      * @throws ChipNotFoundException if a referenced chip is no longer available
-     * @throws IOException if the API call fails
      */
     public AgentResponse aiAgent(AgentRequest request) throws IOException {
         return post("/lathe/ai/agent", request, AgentResponse.class);
