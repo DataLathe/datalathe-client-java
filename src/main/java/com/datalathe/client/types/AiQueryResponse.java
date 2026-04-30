@@ -49,6 +49,16 @@ public class AiQueryResponse {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String error;
 
+    /** Stable machine-readable error code (e.g. {@code "chip_not_found"}). */
+    @JsonProperty("error_code")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String errorCode;
+
+    /** Set when {@code errorCode == "chip_not_found"}. */
+    @JsonProperty("chip_id")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String chipId;
+
     @Data
     @NoArgsConstructor
     @AllArgsConstructor
