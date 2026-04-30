@@ -30,4 +30,7 @@ public class AiCredential {
 
     @JsonProperty("tenant_id")
     private String tenantId;
+
+    @JsonProperty("region")
+    private String region;
 }

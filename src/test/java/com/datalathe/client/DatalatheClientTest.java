@@ -1,9 +1,15 @@
 package com.datalathe.client;
 
+import com.datalathe.client.types.AgentOptions;
+import com.datalathe.client.types.AgentRequest;
+import com.datalathe.client.types.AgentResponse;
+import com.datalathe.client.types.AiCredential;
 import com.datalathe.client.types.AiQueryRequest;
 import com.datalathe.client.types.AiQueryResponse;
 import com.datalathe.client.types.ConversationTurn;
+import com.datalathe.client.types.CreateAiCredentialRequest;
 import com.datalathe.client.types.GenerateReportResponse;
+import com.datalathe.client.types.StopReason;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -343,6 +349,150 @@ public class DatalatheClientTest {
                         fail("Should not have thrown ChipNotFoundException");
                 } catch (IOException expected) {
                         // OK
+                }
+        }
+
+        @Test
+        public void testCreateAiCredentialWithBedrockRegion() throws Exception {
+                server.enqueue(new MockResponse()
+                                .setResponseCode(200)
+                                .setBody("{\"credential_id\":\"cred1\",\"name\":\"bedrock-prod\","
+                                                + "\"provider\":\"bedrock\","
+                                                + "\"default_model\":\"anthropic.claude-sonnet-4-5-20250929-v1:0\","
+                                                + "\"created_at\":1,\"region\":\"us-west-2\"}"));
+
+                AiCredential cred = client.createAiCredential(CreateAiCredentialRequest.builder()
+                                .name("bedrock-prod")
+                                .provider("bedrock")
+                                .apiKey("secret")
+                                .defaultModel("anthropic.claude-sonnet-4-5-20250929-v1:0")
+                                .region("us-west-2")
+                                .build());
+
+                assertEquals("us-west-2", cred.getRegion());
+
+                String body = server.takeRequest().getBody().readUtf8();
+                assertTrue(body.contains("\"region\":\"us-west-2\""));
+                assertTrue(body.contains("\"default_model\":\"anthropic.claude-sonnet-4-5-20250929-v1:0\""));
+                assertTrue(body.contains("\"api_key\":\"secret\""));
+        }
+
+        @Test
+        public void testCreateAiCredentialOmitsRegionForNonBedrock() throws Exception {
+                server.enqueue(new MockResponse()
+                                .setResponseCode(200)
+                                .setBody("{\"credential_id\":\"cred1\",\"name\":\"anthropic\","
+                                                + "\"provider\":\"anthropic\","
+                                                + "\"default_model\":\"claude-sonnet-4-5-20250929\","
+                                                + "\"created_at\":1}"));
+
+                client.createAiCredential("anthropic", "anthropic", "secret",
+                                "claude-sonnet-4-5-20250929");
+
+                String body = server.takeRequest().getBody().readUtf8();
+                // region must be omitted entirely (NON_NULL on the request type)
+                assertFalse(body.contains("\"region\""));
+        }
+
+        @Test
+        public void testAiAgentParsesFullResponse() throws Exception {
+                String responseJson = "{"
+                                + "\"request_id\":\"req1\","
+                                + "\"answer\":\"LATAM had the highest growth at 23%.\","
+                                + "\"attachments\":[{"
+                                + "  \"caption\":\"Growth by region\","
+                                + "  \"sql\":\"SELECT region, growth FROM sales\","
+                                + "  \"data\":{\"columns\":[{\"name\":\"region\",\"data_type\":\"Utf8\"},"
+                                + "                        {\"name\":\"growth\",\"data_type\":\"Float64\"}],"
+                                + "           \"rows\":[[\"LATAM\",\"0.23\"]]},"
+                                + "  \"visualization\":{\"type\":\"bar\",\"x_axis\":\"region\",\"y_axis\":\"growth\"}"
+                                + "}],"
+                                + "\"tool_calls\":[{"
+                                + "  \"iteration\":1,\"tool\":\"list_tables\",\"args\":{},"
+                                + "  \"result_summary\":\"Found 3 tables\",\"duration_ms\":12,\"is_error\":false"
+                                + "}],"
+                                + "\"narration\":[{\"kind\":\"assistant_text\",\"iteration\":1,"
+                                + "                \"text\":\"Let me look at the tables.\"}],"
+                                + "\"session_id\":\"sess-abc\","
+                                + "\"stop_reason\":\"end_turn\","
+                                + "\"usage\":{\"input_tokens\":1500,\"output_tokens\":200,"
+                                + "          \"model\":\"claude-sonnet-4-5-20250929\","
+                                + "          \"iterations\":2,\"tool_calls\":1}"
+                                + "}";
+
+                server.enqueue(new MockResponse().setResponseCode(200).setBody(responseJson));
+
+                AgentResponse result = client.aiAgent(AgentRequest.builder()
+                                .contextId("ctx1")
+                                .credentialId("cred1")
+                                .userQuestion("Which region had the highest growth?")
+                                .sessionId("sess-abc")
+                                .agentOptions(AgentOptions.builder()
+                                                .maxIterations(5)
+                                                .runSqlRowCap(1000)
+                                                .build())
+                                .build());
+
+                assertEquals("req1", result.getRequestId());
+                assertEquals("LATAM had the highest growth at 23%.", result.getAnswer());
+                assertEquals(StopReason.END_TURN, result.getStopReason());
+                assertEquals(1, result.getAttachments().size());
+                assertEquals("Growth by region", result.getAttachments().get(0).getCaption());
+                assertEquals("region",
+                                result.getAttachments().get(0).getVisualization().getXAxis());
+                assertEquals(1, result.getToolCalls().size());
+                assertEquals(1, result.getToolCalls().get(0).getIteration());
+                assertEquals("Found 3 tables", result.getToolCalls().get(0).getResultSummary());
+                assertFalse(result.getToolCalls().get(0).isError());
+                assertEquals("assistant_text", result.getNarration().get(0).getKind());
+                assertEquals(1, result.getUsage().getToolCalls());
+                assertEquals(1500, result.getUsage().getInputTokens());
+
+                RecordedRequest request = server.takeRequest();
+                assertTrue(request.getPath().endsWith("/lathe/ai/agent"));
+                String body = request.getBody().readUtf8();
+                assertTrue(body.contains("\"context_id\":\"ctx1\""));
+                assertTrue(body.contains("\"user_question\":\"Which region had the highest growth?\""));
+                assertTrue(body.contains("\"credential_id\":\"cred1\""));
+                assertTrue(body.contains("\"session_id\":\"sess-abc\""));
+                assertTrue(body.contains("\"max_iterations\":5"));
+                assertTrue(body.contains("\"run_sql_row_cap\":1000"));
+                // Unset cap fields must be omitted (NON_NULL on AgentOptions)
+                assertFalse(body.contains("max_tool_calls"));
+        }
+
+        @Test
+        public void testAiAgentOmitsAgentOptionsWhenNotProvided() throws Exception {
+                server.enqueue(new MockResponse().setResponseCode(200).setBody(
+                                "{\"request_id\":\"r\",\"answer\":\"ok\","
+                                                + "\"attachments\":[],\"tool_calls\":[],\"narration\":[]}"));
+
+                client.aiAgent(AgentRequest.builder()
+                                .contextId("ctx1")
+                                .userQuestion("Hi")
+                                .build());
+
+                String body = server.takeRequest().getBody().readUtf8();
+                assertFalse(body.contains("agent_options"));
+                assertFalse(body.contains("credential_id"));
+        }
+
+        @Test
+        public void testAiAgentSurfacesChipNotFoundOn404() throws Exception {
+                server.enqueue(new MockResponse()
+                                .setResponseCode(404)
+                                .setHeader("Content-Type", "application/json")
+                                .setBody("{\"error\":\"Chip 'lost' is not available (may have expired)\","
+                                                + "\"error_code\":\"chip_not_found\",\"chip_id\":\"lost\"}"));
+
+                try {
+                        client.aiAgent(AgentRequest.builder()
+                                        .contextId("ctx1")
+                                        .userQuestion("Q")
+                                        .build());
+                        fail("Expected ChipNotFoundException");
+                } catch (ChipNotFoundException e) {
+                        assertEquals("lost", e.getChipId());
                 }
         }
 
