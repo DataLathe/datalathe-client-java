@@ -21,7 +21,15 @@ public class CreateAiCredentialRequest {
     @JsonProperty("api_key")
     private String apiKey;
 
+    /**
+     * Required. The server-side fallback was removed because hardcoded
+     * per-provider defaults silently rotted as new model versions shipped.
+     */
     @JsonProperty("default_model")
-    @JsonInclude(JsonInclude.Include.NON_NULL)
     private String defaultModel;
+
+    /** Required when {@code provider} is {@code "bedrock"}. */
+    @JsonProperty("region")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String region;
 }

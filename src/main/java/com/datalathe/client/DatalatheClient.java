@@ -711,23 +711,35 @@ public class DatalatheClient {
     // --- AI Credential methods ---
 
     /**
-     * Creates a new AI credential.
+     * Creates a new AI credential. For bedrock (which requires a region) use
+     * {@link #createAiCredential(CreateAiCredentialRequest)}.
      *
      * @param name         Display name for the credential
-     * @param provider     AI provider (e.g. "anthropic", "openai")
+     * @param provider     AI provider — one of {@code "anthropic"}, {@code "openai"}, {@code "bedrock"}
      * @param apiKey       API key for the provider
-     * @param defaultModel Optional default model to use
+     * @param defaultModel Required. Model to use when a request omits an override.
      * @return The created credential
      * @throws IOException if the API call fails
      */
     public AiCredential createAiCredential(String name, String provider, String apiKey,
             String defaultModel) throws IOException {
-        CreateAiCredentialRequest request = CreateAiCredentialRequest.builder()
+        return createAiCredential(CreateAiCredentialRequest.builder()
                 .name(name)
                 .provider(provider)
                 .apiKey(apiKey)
                 .defaultModel(defaultModel)
-                .build();
+                .build());
+    }
+
+    /**
+     * Creates a new AI credential from a pre-built request. Use this overload
+     * when registering a {@code bedrock} credential that needs a region.
+     *
+     * @param request The credential creation request
+     * @return The created credential
+     * @throws IOException if the API call fails
+     */
+    public AiCredential createAiCredential(CreateAiCredentialRequest request) throws IOException {
         return post("/lathe/ai/credentials", request, AiCredential.class);
     }
 
@@ -857,6 +869,23 @@ public class DatalatheClient {
      */
     public AiQueryResponse aiQuery(AiQueryRequest request) throws IOException {
         return post("/lathe/ai/query", request, AiQueryResponse.class);
+    }
+
+    /**
+     * Sends a natural-language question to the agent endpoint, which
+     * iteratively calls read-only tools against the configured chips before
+     * producing a final answer (with optional attachments and a
+     * chain-of-thought trace). Use this for analytical questions where
+     * the model needs to explore the data; use {@link #aiQuery(AiQueryRequest)}
+     * for direct text-to-SQL.
+     *
+     * @param request The agent request (context + question + optional caps)
+     * @return The agent response with answer, attachments, and trace
+     * @throws ChipNotFoundException if a referenced chip is no longer available
+     * @throws IOException if the API call fails
+     */
+    public AgentResponse aiAgent(AgentRequest request) throws IOException {
+        return post("/lathe/ai/agent", request, AgentResponse.class);
     }
 
     /**
