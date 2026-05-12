@@ -578,10 +578,11 @@ public class DatalatheClient {
         logger.debug("Searching chips: {}", httpRequest.url());
 
         try (Response response = client.newCall(httpRequest).execute()) {
+            String responseBody = response.body() != null ? response.body().string() : "";
             if (!response.isSuccessful()) {
-                throw new IOException("Failed to search chips: " + response.code() + " " + response.body().string());
+                throw new IOException("Failed to search chips: " + response.code() + " " + responseBody);
             }
-            return objectMapper.readValue(response.body().string(), SearchChipsResponse.class);
+            return parseBody("GET", url.toString(), response.code(), responseBody, SearchChipsResponse.class);
         }
     }
 
@@ -916,7 +917,7 @@ public class DatalatheClient {
             if (!response.isSuccessful()) {
                 throwForFailure("GET", path, response.code(), responseBody);
             }
-            return objectMapper.readValue(responseBody, responseType);
+            return parseBody("GET", path, response.code(), responseBody, responseType);
         }
     }
 
@@ -933,7 +934,7 @@ public class DatalatheClient {
             if (!response.isSuccessful()) {
                 throwForFailure("POST", path, response.code(), responseBody);
             }
-            return objectMapper.readValue(responseBody, responseType);
+            return parseBody("POST", path, response.code(), responseBody, responseType);
         }
     }
 
@@ -948,7 +949,7 @@ public class DatalatheClient {
             if (!response.isSuccessful()) {
                 throwForFailure("PUT", path, response.code(), responseBody);
             }
-            return objectMapper.readValue(responseBody, responseType);
+            return parseBody("PUT", path, response.code(), responseBody, responseType);
         }
     }
 
@@ -963,6 +964,20 @@ public class DatalatheClient {
                 String responseBody = response.body() != null ? response.body().string() : "";
                 throwForFailure("DELETE", path, response.code(), responseBody);
             }
+        }
+    }
+
+    private <T> T parseBody(String method, String path, int status, String body, Class<T> responseType)
+            throws IOException {
+        if (body == null || body.trim().isEmpty()) {
+            throw new IOException(method + " " + path + " returned " + status
+                    + " with an empty response body");
+        }
+        try {
+            return objectMapper.readValue(body, responseType);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IOException(method + " " + path + " returned " + status
+                    + " with a non-JSON response body: " + body, e);
         }
     }
 
