@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -63,4 +64,12 @@ public class SearchChipsResponse {
     }
 
     private List<ChipTagRecord> tags;
+
+    /**
+     * Chip IDs whose metadata could not be read back from the chip-manager.
+     * Always populated by v1.7.1+ engines (empty list when none); empty on
+     * older engines that don't emit the field.
+     */
+    @JsonProperty("unreadable_chip_ids")
+    private List<String> unreadableChipIds = new ArrayList<>();
 }
