@@ -6,9 +6,12 @@ import com.datalathe.client.types.AgentResponse;
 import com.datalathe.client.types.AiCredential;
 import com.datalathe.client.types.AiQueryRequest;
 import com.datalathe.client.types.AiQueryResponse;
+import com.datalathe.client.types.ChipSource;
 import com.datalathe.client.types.ConversationTurn;
 import com.datalathe.client.types.CreateAiCredentialRequest;
+import com.datalathe.client.types.CreateChipResponse;
 import com.datalathe.client.types.GenerateReportResponse;
+import com.datalathe.client.types.SourceType;
 import com.datalathe.client.types.StopReason;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.mockwebserver.MockResponse;
@@ -512,5 +515,42 @@ public class DatalatheClientTest {
                 } catch (IOException expected) {
                         // OK
                 }
+        }
+
+        @Test
+        public void testStreamingFieldsSerializedInRequest() throws Exception {
+                server.enqueue(new MockResponse()
+                                .setResponseCode(200)
+                                .setBody("{\"chip_id\":\"chip-stream-1\",\"error\":null,"
+                                                + "\"total_rows\":200000000,\"elapsed_ms\":1843121}"));
+
+                ChipSource source = ChipSource.builder()
+                                .sourceType(SourceType.MYSQL)
+                                .databaseName("prod_db")
+                                .tableName("events")
+                                .query("SELECT * FROM events")
+                                .streaming(true)
+                                .partitionColumn("id")
+                                .build();
+
+                client.createChip(source);
+
+                String body = server.takeRequest().getBody().readUtf8();
+                assertTrue("streaming field must be serialized", body.contains("\"streaming\":true"));
+                assertTrue("partition_column field must be serialized",
+                                body.contains("\"partition_column\":\"id\""));
+        }
+
+        @Test
+        public void testStreamingResponseFieldsDeserialized() throws Exception {
+                ObjectMapper mapper = new ObjectMapper();
+                String json = "{\"chip_id\":\"chip-stream-1\",\"error\":null,"
+                                + "\"total_rows\":200000000,\"elapsed_ms\":1843121}";
+
+                CreateChipResponse response = mapper.readValue(json, CreateChipResponse.class);
+
+                assertEquals("chip-stream-1", response.getChipId());
+                assertEquals(200000000L, (long) response.getTotalRows());
+                assertEquals(1843121L, (long) response.getElapsedMs());
         }
 }
