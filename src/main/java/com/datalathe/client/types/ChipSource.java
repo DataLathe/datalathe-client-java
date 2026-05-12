@@ -53,6 +53,22 @@ public class ChipSource {
     @JsonProperty("storage_config")
     private S3StorageConfig storageConfig;
 
+    /**
+     * When {@code true}, the engine uses a streaming cursor for ingest (MySQL only).
+     * Omitted from the request when {@code false} or unset, preserving buffered behavior.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonProperty("streaming")
+    private Boolean streaming;
+
+    /**
+     * Optional numeric primary key column for keyset-parallel chunked ingest.
+     * Only meaningful when {@link #streaming} is {@code true}.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonProperty("partition_column")
+    private String partitionColumn;
+
     public ChipSource(String databaseName, String tableName, String query) {
         this.databaseName = databaseName;
         this.tableName = tableName;
