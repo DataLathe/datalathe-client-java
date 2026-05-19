@@ -678,15 +678,40 @@ public class DatalatheClient {
      *
      * @param chipIds                List of chip IDs to query
      * @param queries                List of SQL queries to execute
-     * @param transformQuery         If true, transform queries from MariaDB to
-     *                               DuckDB syntax
+     * @param transformQuery         If true, translate MariaDB-syntax queries
+     *                               for the engine
      * @param returnTransformedQuery If true, include the transformed query in
      *                               results
      * @return GenerateReportResult containing results map and timing metadata
-     * @throws IOException if the API call fails
+     * @throws IOException             if the API call fails
+     * @throws DatalatheQueryException if a query fails at execution time
      */
     public GenerateReportResult generateReport(List<String> chipIds, List<String> queries,
             Boolean transformQuery, Boolean returnTransformedQuery) throws IOException {
+        return generateReport(chipIds, queries, transformQuery, returnTransformedQuery, true);
+    }
+
+    /**
+     * Executes queries against a list of chip IDs, with control over
+     * query-error escalation.
+     *
+     * @param chipIds                List of chip IDs to query
+     * @param queries                List of SQL queries to execute
+     * @param transformQuery         If true, translate MariaDB-syntax queries
+     *                               for the engine
+     * @param returnTransformedQuery If true, include the transformed query in
+     *                               results
+     * @param raiseOnQueryError      If true, throw {@link DatalatheQueryException}
+     *                               when a query fails at execution time; if
+     *                               false, the failure stays on the entry's
+     *                               {@code error} field
+     * @return GenerateReportResult containing results map and timing metadata
+     * @throws IOException             if the API call fails
+     * @throws DatalatheQueryException if a query fails and raiseOnQueryError is true
+     */
+    public GenerateReportResult generateReport(List<String> chipIds, List<String> queries,
+            Boolean transformQuery, Boolean returnTransformedQuery, boolean raiseOnQueryError)
+            throws IOException {
         GenerateReportRequest request = new GenerateReportRequest();
         request.setSourceType(SourceType.CHIP);
         request.setQueryRequest(new GenerateReportRequest.Queries(queries));
@@ -703,6 +728,18 @@ public class DatalatheClient {
                 int idx = Integer.parseInt(entry.getKey());
                 GenerateReportResponse.Result result = entry.getValue();
                 results.put(idx, result);
+            }
+        }
+
+        if (raiseOnQueryError) {
+            Map<Integer, String> queryErrors = new HashMap<>();
+            for (Map.Entry<Integer, GenerateReportResponse.Result> entry : results.entrySet()) {
+                if (entry.getValue().getError() != null) {
+                    queryErrors.put(entry.getKey(), entry.getValue().getError());
+                }
+            }
+            if (!queryErrors.isEmpty()) {
+                throw new DatalatheQueryException(queryErrors);
             }
         }
 
