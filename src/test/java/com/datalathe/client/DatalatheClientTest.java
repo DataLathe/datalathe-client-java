@@ -141,12 +141,10 @@ public class DatalatheClientTest {
         }
 
         @Test
-        public void testQueryWithError() throws Exception {
-                // Prepare test data
+        public void testGenerateReportOptOutReturnsErrorEntry() throws Exception {
                 List<String> chipIds = Arrays.asList("chip1");
                 List<String> queries = Arrays.asList("SELECT * FROM users");
 
-                // Mock response with error
                 String responseJson = "{\"result\":{" +
                                 "\"0\":{" +
                                 "\"error\":\"Table not found\"," +
@@ -159,14 +157,64 @@ public class DatalatheClientTest {
                                 .setResponseCode(200)
                                 .setBody(responseJson));
 
-                // Execute test
-                Map<Integer, GenerateReportResponse.Result> results = client.generateReport(chipIds,
-                                queries);
+                Map<Integer, GenerateReportResponse.Result> results = client
+                                .generateReport(chipIds, queries, null, null, false)
+                                .getResults();
 
-                // Verify results - error entry is still included in results map
                 assertEquals(1, results.size());
                 assertEquals("Table not found", results.get(0).getError());
                 assertNull(results.get(0).getResult());
+        }
+
+        @Test
+        public void testGenerateReportRaisesOnFailedQuery() throws Exception {
+                List<String> chipIds = Arrays.asList("chip1");
+                List<String> queries = Arrays.asList("SELECT foo FROM t");
+
+                String responseJson = "{\"result\":{" +
+                                "\"0\":{" +
+                                "\"error\":\"Binder Error: column not found\"," +
+                                "\"result\":null," +
+                                "\"schema\":null" +
+                                "}" +
+                                "}}";
+
+                server.enqueue(new MockResponse()
+                                .setResponseCode(200)
+                                .setBody(responseJson));
+
+                try {
+                        client.generateReport(chipIds, queries);
+                        fail("expected DatalatheQueryException");
+                } catch (DatalatheQueryException e) {
+                        assertEquals(1, e.getErrors().size());
+                        assertEquals("Binder Error: column not found", e.getErrors().get(0));
+                }
+        }
+
+        @Test
+        public void testGenerateReportReportsEveryFailedQuery() throws Exception {
+                List<String> chipIds = Arrays.asList("chip1");
+                List<String> queries = Arrays.asList("SELECT 1", "SELECT bad", "SELECT worse");
+
+                String responseJson = "{\"result\":{" +
+                                "\"0\":{\"error\":null,\"result\":[[\"1\"]],\"schema\":null}," +
+                                "\"1\":{\"error\":\"bad query\",\"result\":null,\"schema\":null}," +
+                                "\"2\":{\"error\":\"worse query\",\"result\":null,\"schema\":null}" +
+                                "}}";
+
+                server.enqueue(new MockResponse()
+                                .setResponseCode(200)
+                                .setBody(responseJson));
+
+                try {
+                        client.generateReport(chipIds, queries);
+                        fail("expected DatalatheQueryException");
+                } catch (DatalatheQueryException e) {
+                        assertEquals(2, e.getErrors().size());
+                        assertEquals("bad query", e.getErrors().get(1));
+                        assertEquals("worse query", e.getErrors().get(2));
+                }
         }
 
         @Test
