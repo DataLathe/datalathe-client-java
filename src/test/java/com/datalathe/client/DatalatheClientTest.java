@@ -617,4 +617,17 @@ public class DatalatheClientTest {
                 assertEquals(200000000L, (long) response.getTotalRows());
                 assertEquals(1843121L, (long) response.getElapsedMs());
         }
+
+        @Test
+        public void testChipMetadataPartitionColumnDeserialized() throws Exception {
+                ObjectMapper mapper = new ObjectMapper();
+                String json = "{\"chips\":[],\"metadata\":[{"
+                                + "\"chip_id\":\"chip1\",\"created_at\":1700000000,"
+                                + "\"description\":\"d\",\"name\":\"n\","
+                                + "\"partition_column\":\"country\"}]}";
+
+                SearchChipsResponse response = mapper.readValue(json, SearchChipsResponse.class);
+
+                assertEquals("country", response.getMetadata().get(0).getPartitionColumn());
+        }
 }

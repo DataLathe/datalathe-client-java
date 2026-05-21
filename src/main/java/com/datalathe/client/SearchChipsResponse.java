@@ -51,6 +51,8 @@ public class SearchChipsResponse {
         private String storageKeyPrefix;
         @JsonProperty("ttl_days")
         private Long ttlDays;
+        @JsonProperty("partition_column")
+        private String partitionColumn;
     }
 
     @Data
