@@ -66,8 +66,8 @@ public class ChipSource {
      * Only meaningful when {@link #streaming} is {@code true}.
      */
     @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonProperty("partition_column")
-    private String partitionColumn;
+    @JsonProperty("keyset_column")
+    private String keysetColumn;
 
     public ChipSource(String databaseName, String tableName, String query) {
         this.databaseName = databaseName;

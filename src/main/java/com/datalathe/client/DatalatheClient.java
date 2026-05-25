@@ -342,7 +342,7 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public String createChipFromS3(String s3Path, String tableName) throws IOException {
-        return createChipFromS3(s3Path, tableName, null, null);
+        return createChipFromS3(s3Path, tableName, null, null, null);
     }
 
     /**
@@ -358,11 +358,31 @@ public class DatalatheClient {
     public String createChipFromS3(String s3Path, String tableName,
             Map<String, String> columnReplace,
             S3StorageConfig storageConfig) throws IOException {
+        return createChipFromS3(s3Path, tableName, null, columnReplace, storageConfig);
+    }
+
+    /**
+     * Creates a new chip from an S3 object, optionally partitioned by a column.
+     *
+     * @param s3Path        S3 URI (e.g. s3://bucket/path/file.csv)
+     * @param tableName     Optional table name for the chip
+     * @param partition     Optional partition configuration — splits the object
+     *                      into one sub-chip per distinct value of a column
+     * @param columnReplace Optional column renaming map
+     * @param storageConfig Optional S3 storage configuration for the created chip
+     * @return The chip ID
+     * @throws IOException if the API call fails
+     */
+    public String createChipFromS3(String s3Path, String tableName,
+            ChipSource.Partition partition,
+            Map<String, String> columnReplace,
+            S3StorageConfig storageConfig) throws IOException {
         CreateChipRequest request = new CreateChipRequest();
         request.setSourceType(SourceType.S3);
         request.setSource(ChipSource.builder()
                 .s3Path(s3Path)
                 .tableName(tableName)
+                .partition(partition)
                 .columnReplace(columnReplace)
                 .build());
         request.setStorageConfig(storageConfig);
