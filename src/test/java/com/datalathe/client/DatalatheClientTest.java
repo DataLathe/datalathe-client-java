@@ -578,15 +578,31 @@ public class DatalatheClientTest {
                                 .tableName("events")
                                 .query("SELECT * FROM events")
                                 .streaming(true)
-                                .partitionColumn("id")
+                                .keysetColumn("id")
                                 .build();
 
                 client.createChip(source);
 
                 String body = server.takeRequest().getBody().readUtf8();
                 assertTrue("streaming field must be serialized", body.contains("\"streaming\":true"));
-                assertTrue("partition_column field must be serialized",
-                                body.contains("\"partition_column\":\"id\""));
+                assertTrue("keyset_column field must be serialized",
+                                body.contains("\"keyset_column\":\"id\""));
+        }
+
+        @Test
+        public void testCreateChipFromS3SerializesPartition() throws Exception {
+                server.enqueue(new MockResponse()
+                                .setResponseCode(200)
+                                .setBody("{\"chip_id\":\"chip-s3-part\",\"error\":null}"));
+
+                client.createChipFromS3("s3://bucket/data.parquet", "sales",
+                                new ChipSource.Partition("region"), null, null);
+
+                String body = server.takeRequest().getBody().readUtf8();
+                assertTrue("s3_path must be serialized",
+                                body.contains("\"s3_path\":\"s3://bucket/data.parquet\""));
+                assertTrue("partition_by must be serialized",
+                                body.contains("\"partition_by\":\"region\""));
         }
 
         @Test
@@ -600,5 +616,18 @@ public class DatalatheClientTest {
                 assertEquals("chip-stream-1", response.getChipId());
                 assertEquals(200000000L, (long) response.getTotalRows());
                 assertEquals(1843121L, (long) response.getElapsedMs());
+        }
+
+        @Test
+        public void testChipMetadataPartitionColumnDeserialized() throws Exception {
+                ObjectMapper mapper = new ObjectMapper();
+                String json = "{\"chips\":[],\"metadata\":[{"
+                                + "\"chip_id\":\"chip1\",\"created_at\":1700000000,"
+                                + "\"description\":\"d\",\"name\":\"n\","
+                                + "\"partition_column\":\"country\"}]}";
+
+                SearchChipsResponse response = mapper.readValue(json, SearchChipsResponse.class);
+
+                assertEquals("country", response.getMetadata().get(0).getPartitionColumn());
         }
 }
