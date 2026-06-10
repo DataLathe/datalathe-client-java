@@ -529,6 +529,75 @@ public class DatalatheClientTest {
         }
 
         @Test
+        public void testAiAgentParsesFollowUps() throws Exception {
+                server.enqueue(new MockResponse().setResponseCode(200).setBody(
+                                "{\"request_id\":\"r\",\"answer\":\"ok\","
+                                                + "\"attachments\":[],\"tool_calls\":[],\"narration\":[],"
+                                                + "\"follow_ups\":[\"How did Q2 compare?\","
+                                                + "\"Which region drove the change?\"]}"));
+
+                AgentResponse result = client.aiAgent(AgentRequest.builder()
+                                .contextId("ctx1")
+                                .userQuestion("Q")
+                                .build());
+
+                assertEquals(Arrays.asList("How did Q2 compare?", "Which region drove the change?"),
+                                result.getFollowUps());
+        }
+
+        @Test
+        public void testAiAgentFollowUpsEmptyWhenAbsent() throws Exception {
+                server.enqueue(new MockResponse().setResponseCode(200).setBody(
+                                "{\"request_id\":\"r\",\"answer\":\"ok\","
+                                                + "\"attachments\":[],\"tool_calls\":[],\"narration\":[]}"));
+
+                AgentResponse result = client.aiAgent(AgentRequest.builder()
+                                .contextId("ctx1")
+                                .userQuestion("Q")
+                                .build());
+
+                assertNotNull(result.getFollowUps());
+                assertTrue(result.getFollowUps().isEmpty());
+        }
+
+        @Test
+        public void testAiAgentSerializesSuggestFollowUpsFalse() throws Exception {
+                server.enqueue(new MockResponse().setResponseCode(200).setBody(
+                                "{\"request_id\":\"r\",\"answer\":\"ok\","
+                                                + "\"attachments\":[],\"tool_calls\":[],\"narration\":[]}"));
+
+                client.aiAgent(AgentRequest.builder()
+                                .contextId("ctx1")
+                                .userQuestion("Q")
+                                .agentOptions(AgentOptions.builder()
+                                                .suggestFollowUps(false)
+                                                .build())
+                                .build());
+
+                String body = server.takeRequest().getBody().readUtf8();
+                assertTrue(body.contains("\"suggest_follow_ups\":false"));
+        }
+
+        @Test
+        public void testAiAgentOmitsSuggestFollowUpsWhenUnset() throws Exception {
+                server.enqueue(new MockResponse().setResponseCode(200).setBody(
+                                "{\"request_id\":\"r\",\"answer\":\"ok\","
+                                                + "\"attachments\":[],\"tool_calls\":[],\"narration\":[]}"));
+
+                client.aiAgent(AgentRequest.builder()
+                                .contextId("ctx1")
+                                .userQuestion("Q")
+                                .agentOptions(AgentOptions.builder()
+                                                .maxIterations(3)
+                                                .build())
+                                .build());
+
+                String body = server.takeRequest().getBody().readUtf8();
+                assertTrue(body.contains("\"max_iterations\":3"));
+                assertFalse(body.contains("suggest_follow_ups"));
+        }
+
+        @Test
         public void testAiAgentSurfacesChipNotFoundOn404() throws Exception {
                 server.enqueue(new MockResponse()
                                 .setResponseCode(404)

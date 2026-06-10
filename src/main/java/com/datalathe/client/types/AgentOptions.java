@@ -40,4 +40,8 @@ public class AgentOptions {
     /** Abort once cumulative input token usage exceeds this (hard cap). */
     @JsonProperty("max_total_input_tokens")
     private Integer maxTotalInputTokens;
+
+    /** Ask the model for up to 3 suggested follow-up questions (default on). */
+    @JsonProperty("suggest_follow_ups")
+    private Boolean suggestFollowUps;
 }
