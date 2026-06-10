@@ -40,6 +40,9 @@ public class AgentResponse {
     @JsonProperty("narration")
     private List<NarrationEntry> narration;
 
+    @JsonProperty("follow_ups")
+    private List<String> followUps = List.of();
+
     @JsonProperty("session_id")
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String sessionId;
