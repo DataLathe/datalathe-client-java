@@ -10,6 +10,7 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -435,6 +436,142 @@ public class DatalatheClient {
         return response.getChipId();
     }
 
+    // --- Async ingest ---
+
+    /**
+     * Submits a chip-creating ingest to run asynchronously. Returns as soon
+     * as the engine accepts the job; use {@link #waitForIngest} or
+     * {@link #getIngestJob} to track progress.
+     *
+     * @param source The fully configured source
+     * @return A handle with the job ID and the chip ID being created
+     * @throws IOException              if the API call fails (400 when the
+     *                                  engine has no chip-manager configured,
+     *                                  429 when the job queue is full)
+     * @throws IllegalArgumentException if sourceType is not set on the source
+     */
+    public IngestJobHandle createChipAsync(ChipSource source) throws IOException {
+        return createChipAsync(source, null);
+    }
+
+    /**
+     * Submits an asynchronous chip-creating ingest with an optional chip ID.
+     *
+     * @param source The fully configured source
+     * @param chipId Optional chip ID to use
+     * @return A handle with the job ID and the chip ID being created
+     * @throws IOException              if the API call fails
+     * @throws IllegalArgumentException if sourceType is not set on the source
+     */
+    public IngestJobHandle createChipAsync(ChipSource source, String chipId) throws IOException {
+        return createChipAsync(source, chipId, null);
+    }
+
+    /**
+     * Submits an asynchronous chip-creating ingest with optional chip ID and
+     * tags. Tags are applied atomically with chip creation.
+     *
+     * @param source The fully configured source
+     * @param chipId Optional chip ID to use
+     * @param tags   Optional tags to apply atomically with creation
+     * @return A handle with the job ID and the chip ID being created
+     * @throws IOException              if the API call fails
+     * @throws IllegalArgumentException if sourceType is not set on the source
+     */
+    public IngestJobHandle createChipAsync(ChipSource source, String chipId, Map<String, String> tags)
+            throws IOException {
+        if (source.getSourceType() == null) {
+            throw new IllegalArgumentException("sourceType must be set on the Source");
+        }
+        CreateChipRequest request = new CreateChipRequest();
+        request.setSourceType(source.getSourceType());
+        request.setSource(source);
+        request.setChipId(chipId);
+        request.setStorageConfig(source.getStorageConfig());
+        request.setTags(tags);
+        request.setAsync(true);
+        return post("/lathe/stage/data", request, IngestJobHandle.class);
+    }
+
+    /**
+     * Fetches the current status of an asynchronous ingest job.
+     *
+     * @param jobId The job ID returned by {@link #createChipAsync}
+     * @return The job status record
+     * @throws IOException if the API call fails
+     */
+    public IngestJob getIngestJob(String jobId) throws IOException {
+        return get("/lathe/jobs/" + URLEncoder.encode(jobId, StandardCharsets.UTF_8), IngestJob.class);
+    }
+
+    /**
+     * Lists all asynchronous ingest jobs.
+     */
+    public List<IngestJob> listIngestJobs() throws IOException {
+        return listIngestJobs(null);
+    }
+
+    /**
+     * Lists asynchronous ingest jobs, optionally filtered by status.
+     *
+     * @param status Optional status filter — one of {@code queued},
+     *               {@code running}, {@code succeeded}, {@code failed},
+     *               {@code cancelled}
+     * @return The matching jobs
+     * @throws IOException if the API call fails
+     */
+    public List<IngestJob> listIngestJobs(String status) throws IOException {
+        String path = "/lathe/jobs";
+        if (status != null) {
+            path += "?status=" + URLEncoder.encode(status, StandardCharsets.UTF_8);
+        }
+        return Arrays.asList(get(path, IngestJob[].class));
+    }
+
+    /**
+     * Resumes a failed ingest job from its last committed chunk.
+     *
+     * @param jobId The job ID to resume
+     * @return A handle with the job ID and chip ID
+     * @throws IOException if the API call fails (409 when the job is still
+     *                     running, 422 when it is not resumable)
+     */
+    public IngestJobHandle resumeIngestJob(String jobId) throws IOException {
+        return post("/lathe/jobs/" + URLEncoder.encode(jobId, StandardCharsets.UTF_8) + "/resume",
+                new HashMap<>(), IngestJobHandle.class);
+    }
+
+    /**
+     * Polls an asynchronous ingest job until it reaches a terminal state.
+     *
+     * @param jobId        The job ID returned by {@link #createChipAsync}
+     * @param pollInterval How long to wait between status checks
+     * @param timeout      Maximum total time to wait
+     * @return The final job record when the job succeeds
+     * @throws IngestFailedException if the job ends {@code failed} or
+     *                               {@code cancelled}; carries the job's error
+     * @throws IOException           if polling fails or the timeout elapses
+     * @throws InterruptedException  if the polling thread is interrupted
+     */
+    public IngestJob waitForIngest(String jobId, Duration pollInterval, Duration timeout)
+            throws IOException, InterruptedException {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (true) {
+            IngestJob job = getIngestJob(jobId);
+            IngestJobStatus status = job.getStatus();
+            if (status == IngestJobStatus.SUCCEEDED) {
+                return job;
+            }
+            if (status != null && status.isTerminal()) {
+                throw new IngestFailedException(jobId, status, job.getError());
+            }
+            if (System.nanoTime() >= deadline) {
+                throw new IOException("Timed out waiting for ingest job " + jobId + " after " + timeout);
+            }
+            Thread.sleep(pollInterval.toMillis());
+        }
+    }
+
     /**
      * Deletes a chip and its associated data (local files and S3 objects).
      *
@@ -508,7 +645,27 @@ public class DatalatheClient {
      * Returns all chips and their metadata.
      */
     public SearchChipsResponse listChips() throws IOException {
-        return get("/lathe/chips", SearchChipsResponse.class);
+        return listChips(null, null);
+    }
+
+    /**
+     * Returns a page of chips and their metadata.
+     *
+     * @param limit  Maximum number of chips to return, or null for no limit
+     * @param offset Number of chips to skip, or null to start from the beginning
+     * @return The page of chips; {@code totalCount} carries the unpaged total
+     * @throws IOException if the API call fails
+     */
+    public SearchChipsResponse listChips(Integer limit, Integer offset) throws IOException {
+        List<String> params = new ArrayList<>();
+        if (limit != null) {
+            params.add("limit=" + limit);
+        }
+        if (offset != null) {
+            params.add("offset=" + offset);
+        }
+        String path = "/lathe/chips" + (params.isEmpty() ? "" : "?" + String.join("&", params));
+        return get(path, SearchChipsResponse.class);
     }
 
     /**

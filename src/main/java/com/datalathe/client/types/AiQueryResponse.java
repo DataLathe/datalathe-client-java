@@ -69,6 +69,10 @@ public class AiQueryResponse {
 
         @JsonProperty("rows")
         private List<List<String>> rows;
+
+        /** True when rows were cut off at the engine's result-row cap. */
+        @JsonProperty("truncated")
+        private boolean truncated;
     }
 
     @Data
