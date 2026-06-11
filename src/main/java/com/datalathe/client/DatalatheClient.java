@@ -1,5 +1,6 @@
 package com.datalathe.client;
 
+import com.datalathe.client.results.DatalatheStreamingResultSet;
 import com.datalathe.client.types.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -921,6 +922,107 @@ public class DatalatheClient {
         }
 
         return new GenerateReportResult(results, response.getTiming());
+    }
+
+    /**
+     * Executes a single query against a list of chip IDs and streams the result
+     * rows back incrementally over an NDJSON response, rather than buffering the
+     * whole result in memory.
+     *
+     * <p>The returned {@link DatalatheStreamingResultSet} is forward-only
+     * ({@link java.sql.ResultSet#TYPE_FORWARD_ONLY}); iterate it with
+     * {@code while (rs.next()) { ... }}. It owns the live HTTP connection, so it
+     * must be closed when done — use try-with-resources. Unlike the buffered
+     * path, the server applies no {@code max_result_rows} cap to streamed
+     * responses, so a partial download is the caller's memory concern.</p>
+     *
+     * <p>Only a single query is supported; the engine rejects multi-query
+     * streaming with a 400, so this method rejects it client-side with an
+     * {@link IllegalArgumentException}.</p>
+     *
+     * @param chipIds List of chip IDs to query
+     * @param query   The single SQL query to execute
+     * @return a forward-only streaming result set over the query's rows
+     * @throws IOException              if the request fails before the first
+     *                                  frame (4xx/5xx, including chip-not-found)
+     * @throws IllegalArgumentException if more than one query is supplied
+     */
+    public DatalatheStreamingResultSet generateReportStream(List<String> chipIds, String query)
+            throws IOException {
+        return generateReportStream(chipIds, query, null, null);
+    }
+
+    /**
+     * Streaming counterpart to {@link #generateReport}, with transform-query
+     * support.
+     *
+     * @param chipIds                List of chip IDs to query
+     * @param query                  The single SQL query to execute
+     * @param transformQuery         If true, translate MariaDB-syntax queries
+     *                               for the engine
+     * @param returnTransformedQuery If true, the schema frame carries the
+     *                               transformed query
+     *                               ({@link DatalatheStreamingResultSet#getTransformedQuery()})
+     * @return a forward-only streaming result set over the query's rows
+     * @throws IOException              if the request fails before the first frame
+     * @throws IllegalArgumentException if more than one query is supplied
+     */
+    public DatalatheStreamingResultSet generateReportStream(List<String> chipIds, String query,
+            Boolean transformQuery, Boolean returnTransformedQuery) throws IOException {
+        if (query == null) {
+            throw new IllegalArgumentException("query must not be null");
+        }
+
+        GenerateReportRequest request = new GenerateReportRequest();
+        request.setSourceType(SourceType.CHIP);
+        request.setQueryRequest(new GenerateReportRequest.Queries(List.of(query)));
+        request.setChipIds(chipIds);
+        request.setTransformQuery(transformQuery);
+        request.setReturnTransformedQuery(returnTransformedQuery);
+        request.setStream(true);
+
+        Request httpRequest = new Request.Builder()
+                .url(baseUrl + "/lathe/report")
+                .header("Accept", "application/x-ndjson")
+                .post(RequestBody.create(objectMapper.writeValueAsString(request), JSON))
+                .build();
+
+        Response response = client.newCall(httpRequest).execute();
+        if (!response.isSuccessful()) {
+            String responseBody;
+            try (Response r = response) {
+                responseBody = r.body() != null ? r.body().string() : "";
+            }
+            throwForFailure("POST", "/lathe/report", response.code(), responseBody);
+        }
+
+        try {
+            return new DatalatheStreamingResultSet(response);
+        } catch (java.sql.SQLException e) {
+            response.close();
+            throw new IOException("Failed to open streaming report", e);
+        }
+    }
+
+    /**
+     * Convenience overload of {@link #generateReportStream(List, String)} that
+     * rejects a multi-query list client-side, mirroring the engine's 400 for
+     * streaming with more than one query.
+     *
+     * @param chipIds List of chip IDs to query
+     * @param queries The queries; must contain exactly one entry
+     * @return a forward-only streaming result set over the query's rows
+     * @throws IOException              if the request fails before the first frame
+     * @throws IllegalArgumentException if {@code queries} is not exactly one query
+     */
+    public DatalatheStreamingResultSet generateReportStream(List<String> chipIds, List<String> queries)
+            throws IOException {
+        if (queries == null || queries.size() != 1) {
+            throw new IllegalArgumentException(
+                    "Streaming reports support exactly one query; got "
+                            + (queries == null ? 0 : queries.size()));
+        }
+        return generateReportStream(chipIds, queries.get(0), null, null);
     }
 
     // --- AI Credential methods ---
