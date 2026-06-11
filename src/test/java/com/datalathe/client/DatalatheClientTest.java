@@ -312,6 +312,28 @@ public class DatalatheClientTest {
         }
 
         @Test
+        public void testAiQueryParsesTruncatedResultData() throws Exception {
+                String responseJson = "{" +
+                        "\"request_id\":\"req1\"," +
+                        "\"data\":{" +
+                        "\"columns\":[{\"name\":\"id\",\"data_type\":\"Int32\"}]," +
+                        "\"rows\":[[\"1\"],[\"2\"]]," +
+                        "\"truncated\":true" +
+                        "}" +
+                        "}";
+
+                server.enqueue(new MockResponse()
+                                .setResponseCode(200)
+                                .setBody(responseJson));
+
+                AiQueryResponse result = client.aiQuery("ctx1", "cred1", "List ids");
+
+                assertNotNull(result.getData());
+                assertTrue(result.getData().isTruncated());
+                assertEquals(2, result.getData().getRows().size());
+        }
+
+        @Test
         public void testAiConversation() throws Exception {
                 String response1Json = "{" +
                         "\"request_id\":\"req1\"," +
