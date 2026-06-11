@@ -74,4 +74,13 @@ public class SearchChipsResponse {
      */
     @JsonProperty("unreadable_chip_ids")
     private List<String> unreadableChipIds = new ArrayList<>();
+
+    /**
+     * Total number of chips matching the request, regardless of any
+     * {@code limit}/{@code offset} applied. Populated by v1.7.12+ engines
+     * on the list endpoint; null on older engines or endpoints that don't
+     * emit the field.
+     */
+    @JsonProperty("total_count")
+    private Long totalCount;
 }
