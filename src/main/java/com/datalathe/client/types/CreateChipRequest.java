@@ -30,6 +30,10 @@ public class CreateChipRequest {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Map<String, String> tags;
 
+    @JsonProperty("async")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Boolean async;
+
     public CreateChipRequest(SourceType sourceType, ChipSource source) {
         this.sourceType = sourceType;
         this.source = source;
