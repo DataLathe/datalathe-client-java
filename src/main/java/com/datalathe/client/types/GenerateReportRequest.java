@@ -32,6 +32,10 @@ public class GenerateReportRequest {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Boolean returnTransformedQuery;
 
+    @JsonProperty("stream")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Boolean stream;
+
     public GenerateReportRequest(List<String> chipIds, SourceType sourceType, Queries queryRequest) {
         this.chipIds = chipIds;
         this.sourceType = sourceType;
