@@ -38,7 +38,7 @@
         <!-- Release 18 keeps bytecode compatible with nCino and other Java 18+ consumers. -->
         <maven.compiler.release>18</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <junit.version>5.10.2</junit.version>
+        <junit.version>6.1.0</junit.version>
     </properties>
 
     <dependencies>
