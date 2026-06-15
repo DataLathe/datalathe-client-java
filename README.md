@@ -19,7 +19,7 @@ The library is published to [Maven Central](https://central.sonatype.com/artifac
 <dependency>
     <groupId>com.datalathe</groupId>
     <artifactId>datalathe-client</artifactId>
-    <version>1.0.0</version>
+    <version>1.8.1</version>
 </dependency>
 ```
 
@@ -28,7 +28,7 @@ The library is published to [Maven Central](https://central.sonatype.com/artifac
 ### Basic Query Example
 
 ```java
-DatalatheClient client = new DatalatheClient("http://localhost:8080");
+DatalatheClient client = new DatalatheClient("http://localhost:3000");
 
 // Stage data from a single query
 String stageQuery = "SELECT * FROM users";
@@ -108,13 +108,13 @@ For higher NVD API rate limits, add your [NVD API key](https://nvd.nist.gov/deve
 
 ## Requirements
 
-- Java 11 or higher
+- Java 18 or higher
 - Maven 3.6 or higher
 
 ## Dependencies
 
 - OkHttp 4.12.0
-- Jackson Databind 2.16.0
+- Jackson Databind 2.21.3
 - JUnit Jupiter 5.10.2 (for testing)
 
 ## License
