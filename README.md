@@ -114,7 +114,7 @@ For higher NVD API rate limits, add your [NVD API key](https://nvd.nist.gov/deve
 ## Dependencies
 
 - OkHttp 4.12.0
-- Jackson Databind 2.21.3
+- Jackson Databind 2.22.0
 - JUnit Jupiter 5.10.2 (for testing)
 
 ## License
