@@ -28,25 +28,47 @@ The library is published to [Maven Central](https://central.sonatype.com/artifac
 ### Basic Query Example
 
 ```java
+import java.sql.ResultSet;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+
+import com.datalathe.client.DatalatheClient;
+import com.datalathe.client.types.GenerateReportResponse;
+
 DatalatheClient client = new DatalatheClient("http://localhost:3000");
 
-// Stage data from a single query
-String stageQuery = "SELECT * FROM users";
-List<String> chipIds = client.stageData("my_database", stageQuery, "my_table");
+// Create a chip from a source database query
+String chipId = client.createChip("my_database", "SELECT * FROM users", "users");
 
-// Execute multiple queries on the staged data
+// Execute multiple queries against the chip
 List<String> queries = Arrays.asList(
-    "SELECT * FROM my_table",
-    "SELECT COUNT(*) FROM my_table"
-);
-Map<Integer, ResultSet> results = client.query(chipIds, queries);
+    "SELECT name, age FROM users",
+    "SELECT COUNT(*) FROM users");
+Map<Integer, GenerateReportResponse.Result> results =
+    client.generateReport(Arrays.asList(chipId), queries);
 
-// Process results
-ResultSet rs = results.get(0);
+// Process each result as a JDBC-style ResultSet (keyed by query index)
+ResultSet rs = results.get(0).getResultSet();
 while (rs.next()) {
     String name = rs.getString("name");
     int age = rs.getInt("age");
     // Process data...
+}
+```
+
+For large results, `generateReportStream(...)` returns a forward-only
+`DatalatheStreamingResultSet` that streams rows incrementally instead of
+buffering the whole result in memory. It holds the live HTTP connection, so
+close it when done:
+
+```java
+try (DatalatheStreamingResultSet rs =
+        client.generateReportStream(Arrays.asList(chipId), "SELECT name, age FROM users")) {
+    while (rs.next()) {
+        String name = rs.getString("name");
+        // Process data...
+    }
 }
 ```
 
@@ -113,9 +135,11 @@ For higher NVD API rate limits, add your [NVD API key](https://nvd.nist.gov/deve
 
 ## Dependencies
 
-- OkHttp 4.12.0
-- Jackson Databind 2.21.3
-- JUnit Jupiter 5.10.2 (for testing)
+- OkHttp
+- Jackson Databind
+- JUnit Jupiter (for testing)
+
+See `pom.xml` for the current versions.
 
 ## License
 
