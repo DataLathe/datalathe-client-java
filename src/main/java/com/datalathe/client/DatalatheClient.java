@@ -2,6 +2,7 @@ package com.datalathe.client;
 
 import com.datalathe.client.results.DatalatheStreamingResultSet;
 import com.datalathe.client.types.*;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
@@ -20,7 +21,8 @@ public class DatalatheClient {
     private final String baseUrl;
     private final Map<String, String> defaultHeaders;
     private final OkHttpClient client;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     private final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 
     /**
