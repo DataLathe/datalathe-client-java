@@ -5,9 +5,13 @@ A Java client library for interacting with Datalathe, providing a JDBC-compatibl
 ## Features
 
 - JDBC-compatible `ResultSet` implementation
-- Support for multiple data types (Int32, Utf8, Boolean, Float64)
+- Support for multiple data types (Int32, Int64, Float32, Float64, Utf8, Boolean)
 - Batch query execution
 - Data staging capabilities
+- Chip resolution (`ChipResolver` finds or creates the chips a report needs)
+- Async ingest job handles (`createChipAsync` returns an `IngestJobHandle`; interrupted jobs resume via `resumeIngestJob`)
+- AI query support (`aiQuery` with typed `AiQueryRequest`/`AiQueryResponse`)
+- Connection management (`listConnections`, `upsertConnection`, `testConnection`, `deleteConnection` with `ConnectionInfo`)
 - Null value handling
 - Type conversion and metadata support
 
@@ -72,13 +76,98 @@ try (DatalatheStreamingResultSet rs =
 }
 ```
 
+### Chip Resolution
+
+`ChipResolver` automates the find-or-create chip workflow for reports. Given the
+tables a report needs (or SQL queries to parse), partition values, and a tag for
+tenant isolation, it searches for existing chips, creates only the missing ones
+in parallel (deduplicating concurrent requests for the same chip), and tags new
+chips so future runs find them. Create one resolver per application and share it
+across threads.
+
+You supply a `ChipFactory` that tells the resolver which tables are partitioned
+(one chip per partition value, e.g. monthly snapshots) versus unpartitioned (one
+chip total, e.g. reference data), and how to build the `ChipSource` for each
+chip:
+
+```java
+import java.util.List;
+import java.util.Set;
+
+import com.datalathe.client.DatalatheClient;
+import com.datalathe.client.resolver.ChipFactory;
+import com.datalathe.client.resolver.ChipResolver;
+import com.datalathe.client.resolver.ResolvedChips;
+import com.datalathe.client.types.ChipSource;
+import com.datalathe.client.types.SourceType;
+
+DatalatheClient client = new DatalatheClient("http://localhost:3000");
+ChipResolver resolver = new ChipResolver(client);
+
+Set<String> partitionedTables = Set.of("orders");
+
+ChipFactory factory = new ChipFactory() {
+    @Override
+    public boolean isPartitioned(String table) {
+        return partitionedTables.contains(table);
+    }
+
+    @Override
+    public ChipSource buildSource(String table, String partitionValue) {
+        String sql = "SELECT * FROM " + table
+            + (partitionValue != null ? " WHERE month = '" + partitionValue + "'" : "");
+
+        return ChipSource.builder()
+            .sourceType(SourceType.MYSQL)
+            .databaseName("prod_db")
+            .tableName(table)
+            .query(sql)
+            .partition(partitionValue != null
+                ? ChipSource.Partition.builder()
+                    .partitionBy("month")
+                    .partitionValues(List.of(partitionValue))
+                    .build()
+                : null)
+            .build();
+    }
+};
+
+// From SQL — table names are extracted automatically
+ResolvedChips chips = resolver.resolve(
+    List.of("SELECT u.name, o.total FROM users u JOIN orders o ON u.id = o.user_id"),
+    List.of("2026-01", "2026-02"),
+    "tenant", "42",
+    factory);
+
+// Or from known table names
+ResolvedChips fromTables = resolver.resolveForTables(
+    Set.of("users", "orders"),
+    List.of("2026-01", "2026-02"),
+    "tenant", "42",
+    factory);
+
+// Pass the full set of chip IDs to a report
+client.generateReport(chips.allChipIds(), List.of("SELECT month, sum(total) FROM orders GROUP BY month"));
+```
+
+`ResolvedChips` splits the results into `unpartitionedChipIds()` and
+`partitionedChipIds()`; `allChipIds()` concatenates both and `size()` returns
+the total count.
+
+Resolution is incremental: the first run for a 13-month trend report creates all
+chips, subsequent runs find them via search and create nothing, and when the
+window slides forward a month only the single new chip per partitioned table is
+created.
+
 ### Data Types
 
 The client supports the following data types:
 
 - `Int32`: 32-bit integers
+- `Int64`: 64-bit integers
 - `Utf8`: String values
 - `Boolean`: True/false values
+- `Float32`: Single-precision floating point numbers
 - `Float64`: Double-precision floating point numbers
 
 ### ResultSet Features
