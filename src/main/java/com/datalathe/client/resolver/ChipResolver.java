@@ -1,5 +1,6 @@
 package com.datalathe.client.resolver;
 
+import com.datalathe.client.DatalatheApiException;
 import com.datalathe.client.DatalatheClient;
 import com.datalathe.client.SearchChipsResponse;
 import com.datalathe.client.types.ChipSource;
@@ -263,6 +264,15 @@ public class ChipResolver {
                         try {
                             ChipSource source = factory.buildSource(table, partitionValue);
                             return client.createChip(source, null, Map.of(tagKey, tagValue));
+                        } catch (DatalatheApiException e) {
+                            if ("EMPTY_SOURCE".equals(e.getErrorCode())) {
+                                log.info("Chip creation skipped for table={} partition={} errorCode={} message={}",
+                                        table, partitionValue, e.getErrorCode(), e.getServerMessage());
+                            } else {
+                                log.warn("Chip creation failed for table={} partition={} errorCode={} message={}",
+                                        table, partitionValue, e.getErrorCode(), e.getServerMessage());
+                            }
+                            return null;
                         } catch (IOException e) {
                             log.error("Chip creation failed for table={} partition={}",
                                     table, partitionValue, e);

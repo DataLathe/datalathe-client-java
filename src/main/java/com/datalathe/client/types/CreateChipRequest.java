@@ -34,6 +34,10 @@ public class CreateChipRequest {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Boolean async;
 
+    @JsonProperty("fail_if_empty")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Boolean failIfEmpty;
+
     public CreateChipRequest(SourceType sourceType, ChipSource source) {
         this.sourceType = sourceType;
         this.source = source;
