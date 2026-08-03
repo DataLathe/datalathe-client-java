@@ -69,6 +69,15 @@ public class ChipSource {
     @JsonProperty("keyset_column")
     private String keysetColumn;
 
+    /**
+     * When {@code true}, a create whose source returns no rows fails with
+     * {@code error_code} {@code EMPTY_SOURCE} instead of registering an empty
+     * chip. Omitted from the request when unset, preserving engine defaults.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonProperty("fail_if_empty")
+    private Boolean failIfEmpty;
+
     public ChipSource(String databaseName, String tableName, String query) {
         this.databaseName = databaseName;
         this.tableName = tableName;
