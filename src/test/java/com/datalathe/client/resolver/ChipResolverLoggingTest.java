@@ -109,8 +109,20 @@ class ChipResolverLoggingTest {
         assertNull(event.getThrown());
         String message = event.getMessage().getFormattedMessage();
         assertTrue(message.contains("table=users"));
-        assertTrue(message.contains("errorCode=EMPTY_SOURCE"));
         assertTrue(message.contains("message=source returned no rows"));
+    }
+
+    @Test
+    void legacyEmptyMessageLogsInfoWithoutStack() throws Exception {
+        LogEvent event = resolveAndCaptureFailureEvent(
+                "{\"error_code\":\"PROCESSING_ERROR\","
+                        + "\"message\":\"No partitions to register - all partition values returned empty data\"}");
+
+        assertEquals(Level.INFO, event.getLevel());
+        assertNull(event.getThrown());
+        String message = event.getMessage().getFormattedMessage();
+        assertTrue(message.contains("table=users"));
+        assertTrue(message.contains("message=No partitions to register"));
     }
 
     @Test

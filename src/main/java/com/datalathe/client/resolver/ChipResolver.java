@@ -10,6 +10,7 @@ import org.apache.logging.log4j.Logger;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.function.LongSupplier;
 
 /**
  * Resolves the set of chips needed for a report, creating any that are missing.
@@ -61,12 +62,18 @@ public class ChipResolver {
 
     private static final Logger log = LogManager.getLogger(ChipResolver.class);
     private static final long DEFAULT_TIMEOUT_MINUTES = 10;
+    private static final long DEFAULT_EMPTY_RECHECK_MINUTES = 30;
+    private static final String LEGACY_EMPTY_MESSAGE = "No partitions to register";
 
     private final DatalatheClient client;
     private final ExecutorService executor;
     private final long timeoutMinutes;
+    private final long emptyRecheckMinutes;
     private final ConcurrentHashMap<String, CompletableFuture<String>> inflight =
             new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> emptySince = new ConcurrentHashMap<>();
+
+    LongSupplier clock = System::currentTimeMillis;
 
     public ChipResolver(DatalatheClient client) {
         this(client, Executors.newFixedThreadPool(
@@ -79,9 +86,24 @@ public class ChipResolver {
     }
 
     public ChipResolver(DatalatheClient client, ExecutorService executor, long timeoutMinutes) {
+        this(client, executor, timeoutMinutes, DEFAULT_EMPTY_RECHECK_MINUTES);
+    }
+
+    /**
+     * @param emptyRecheckMinutes how long a create that failed because the
+     *                            source was empty is remembered before the
+     *                            resolver retries it; 0 disables the cache
+     */
+    public ChipResolver(DatalatheClient client, ExecutorService executor, long timeoutMinutes,
+                        long emptyRecheckMinutes) {
         this.client = client;
         this.executor = executor;
         this.timeoutMinutes = timeoutMinutes;
+        this.emptyRecheckMinutes = emptyRecheckMinutes;
+    }
+
+    public long getEmptyRecheckMinutes() {
+        return emptyRecheckMinutes;
     }
 
     /**
@@ -180,13 +202,17 @@ public class ChipResolver {
                         && chip.getChipId().equals(chip.getSubChipId())
                         && existingUnpartitionedTables.add(table)) {
                     existingUnpartitionedIds.add(chip.getChipId());
-                    // Chip is now searchable — evict from inflight cache
-                    inflight.remove(keyPrefix + table + "|" + null);
+                    // Chip is now searchable — evict from inflight and empty caches
+                    String key = keyPrefix + table + "|" + null;
+                    inflight.remove(key);
+                    emptySince.remove(key);
                 } else if (partitionedTables.contains(table)
                         && pvSet.contains(chip.getPartitionValue())
                         && existingPartitionedKeys.add(table + "|" + chip.getPartitionValue())) {
                     existingPartitionedIds.add(chip.getChipId());
-                    inflight.remove(keyPrefix + table + "|" + chip.getPartitionValue());
+                    String key = keyPrefix + table + "|" + chip.getPartitionValue();
+                    inflight.remove(key);
+                    emptySince.remove(key);
                 }
             }
         }
@@ -256,6 +282,10 @@ public class ChipResolver {
 
         String key = tagKey + ":" + tagValue + "|" + table + "|" + partitionValue;
 
+        if (emptySuppressed(key)) {
+            return CompletableFuture.completedFuture(null);
+        }
+
         return inflight.computeIfAbsent(key, k -> {
             log.info("Creating chip for table={} partition={}", table, partitionValue);
 
@@ -263,19 +293,11 @@ public class ChipResolver {
                     .supplyAsync(() -> {
                         try {
                             ChipSource source = factory.buildSource(table, partitionValue);
-                            return client.createChip(source, null, Map.of(tagKey, tagValue));
-                        } catch (DatalatheApiException e) {
-                            if ("EMPTY_SOURCE".equals(e.getErrorCode())) {
-                                log.info("Chip creation skipped for table={} partition={} errorCode={} message={}",
-                                        table, partitionValue, e.getErrorCode(), e.getServerMessage());
-                            } else {
-                                log.warn("Chip creation failed for table={} partition={} errorCode={} message={}",
-                                        table, partitionValue, e.getErrorCode(), e.getServerMessage());
-                            }
-                            return null;
+                            String id = client.createChip(source, null, Map.of(tagKey, tagValue));
+                            emptySince.remove(key);
+                            return id;
                         } catch (IOException e) {
-                            log.error("Chip creation failed for table={} partition={}",
-                                    table, partitionValue, e);
+                            handleCreateFailure(key, table, partitionValue, e);
                             return null;
                         }
                     }, executor)
@@ -284,6 +306,49 @@ public class ChipResolver {
                         if (id == null || ex != null) inflight.remove(key);
                     });
         });
+    }
+
+    private void handleCreateFailure(String key, String table, String partitionValue, IOException e) {
+        if (isEmptySource(e)) {
+            if (emptyRecheckMinutes > 0) {
+                emptySince.put(key, clock.getAsLong());
+            }
+            String message = e instanceof DatalatheApiException api && api.getServerMessage() != null
+                    ? api.getServerMessage() : e.getMessage();
+            log.info("Chip source empty for table={} partition={} message={}",
+                    table, partitionValue, message);
+        } else if (e instanceof DatalatheApiException api) {
+            log.warn("Chip creation failed for table={} partition={} errorCode={} message={}",
+                    table, partitionValue, api.getErrorCode(), api.getServerMessage());
+        } else {
+            log.error("Chip creation failed for table={} partition={}", table, partitionValue, e);
+        }
+    }
+
+    /**
+     * The message match covers engines that predate the {@code EMPTY_SOURCE}
+     * error code.
+     */
+    private static boolean isEmptySource(IOException e) {
+        if (e instanceof DatalatheApiException api && "EMPTY_SOURCE".equals(api.getErrorCode())) {
+            return true;
+        }
+        return e.getMessage() != null && e.getMessage().contains(LEGACY_EMPTY_MESSAGE);
+    }
+
+    private boolean emptySuppressed(String key) {
+        if (emptyRecheckMinutes <= 0) {
+            return false;
+        }
+        Long since = emptySince.get(key);
+        if (since == null) {
+            return false;
+        }
+        if (clock.getAsLong() - since >= TimeUnit.MINUTES.toMillis(emptyRecheckMinutes)) {
+            emptySince.remove(key, since);
+            return false;
+        }
+        return true;
     }
 
     /** Returns the number of currently in-flight chip creations. */
