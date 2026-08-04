@@ -58,6 +58,23 @@ public class DatalatheClient {
      *                       pass an empty map for none
      */
     public DatalatheClient(String baseUrl, Map<String, String> defaultHeaders) {
+        this(baseUrl, defaultHeaders, RetryConfig.DEFAULT);
+    }
+
+    /**
+     * Constructs a client with default headers and explicit retry behavior.
+     *
+     * <p>By default the client transparently retries HTTP 429 responses
+     * (up to 3 retries, honoring {@code Retry-After}); pass
+     * {@link RetryConfig#DISABLED} to surface 429s immediately, or a custom
+     * {@link RetryConfig} to tune the retry count and backoff.</p>
+     *
+     * @param baseUrl        the datalathe engine base URL
+     * @param defaultHeaders headers to apply to every outbound request;
+     *                       pass an empty map for none
+     * @param retryConfig    429 retry behavior; see {@link RetryConfig}
+     */
+    public DatalatheClient(String baseUrl, Map<String, String> defaultHeaders, RetryConfig retryConfig) {
         this.baseUrl = baseUrl;
         this.defaultHeaders = Map.copyOf(defaultHeaders);
 
@@ -74,6 +91,10 @@ public class DatalatheClient {
                 }
                 return chain.proceed(rb.build());
             });
+        }
+
+        if (retryConfig != null && retryConfig.isEnabled() && retryConfig.getMaxRetries() > 0) {
+            builder.addInterceptor(new RetryInterceptor(retryConfig));
         }
 
         this.client = builder.build();
