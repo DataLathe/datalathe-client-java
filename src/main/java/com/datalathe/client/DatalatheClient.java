@@ -791,6 +791,24 @@ public class DatalatheClient {
     }
 
     /**
+     * Runs a single read-only SQL statement against the chips' raw catalogs
+     * (engine 1.11+). Unlike report queries there is no view layer: the
+     * statement sees every table inside the attached chips via
+     * {@code s_<sub_chip_id>.main.<table>}, including staging leftovers.
+     * Results are truncated at the engine's {@code max_result_rows} cap
+     * ({@code truncated} flag).
+     *
+     * @param chipIds The chip IDs to query
+     * @param query   The SQL statement to execute
+     * @return The result columns, rows, and truncation flag
+     * @throws ChipNotFoundException if a referenced chip is not available
+     * @throws IOException           if the API call fails
+     */
+    public ChipQueryResult queryChips(List<String> chipIds, String query) throws IOException {
+        return post("/lathe/chips/query", new ChipQueryRequest(chipIds, query), ChipQueryResult.class);
+    }
+
+    /**
      * Adds or updates tags on a chip. Existing keys have their values replaced.
      *
      * @param chipId The chip ID to tag
