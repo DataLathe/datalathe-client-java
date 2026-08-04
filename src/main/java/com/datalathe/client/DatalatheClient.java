@@ -58,6 +58,23 @@ public class DatalatheClient {
      *                       pass an empty map for none
      */
     public DatalatheClient(String baseUrl, Map<String, String> defaultHeaders) {
+        this(baseUrl, defaultHeaders, RetryConfig.DEFAULT);
+    }
+
+    /**
+     * Constructs a client with default headers and explicit retry behavior.
+     *
+     * <p>By default the client transparently retries HTTP 429 responses
+     * (up to 3 retries, honoring {@code Retry-After}); pass
+     * {@link RetryConfig#DISABLED} to surface 429s immediately, or a custom
+     * {@link RetryConfig} to tune the retry count and backoff.</p>
+     *
+     * @param baseUrl        the datalathe engine base URL
+     * @param defaultHeaders headers to apply to every outbound request;
+     *                       pass an empty map for none
+     * @param retryConfig    429 retry behavior; see {@link RetryConfig}
+     */
+    public DatalatheClient(String baseUrl, Map<String, String> defaultHeaders, RetryConfig retryConfig) {
         this.baseUrl = baseUrl;
         this.defaultHeaders = Map.copyOf(defaultHeaders);
 
@@ -74,6 +91,10 @@ public class DatalatheClient {
                 }
                 return chain.proceed(rb.build());
             });
+        }
+
+        if (retryConfig != null && retryConfig.isEnabled() && retryConfig.getMaxRetries() > 0) {
+            builder.addInterceptor(new RetryInterceptor(retryConfig));
         }
 
         this.client = builder.build();
@@ -209,6 +230,7 @@ public class DatalatheClient {
         request.setChipId(chipId);
         request.setStorageConfig(source.getStorageConfig());
         request.setTags(tags);
+        request.setFailIfEmpty(source.getFailIfEmpty());
         CreateChipResponse response = post("/lathe/stage/data", request, CreateChipResponse.class);
         if (response.getError() != null) {
             throw new IOException("Failed to stage data: " + response.getError());
@@ -253,6 +275,7 @@ public class DatalatheClient {
             request.setSource(source);
             request.setChipId(chipId);
             request.setStorageConfig(source.getStorageConfig());
+            request.setFailIfEmpty(source.getFailIfEmpty());
             CreateChipResponse response = post("/lathe/stage/data", request, CreateChipResponse.class);
             if (response.getError() != null) {
                 throw new IOException("Failed to stage data: " + response.getError());
@@ -492,6 +515,7 @@ public class DatalatheClient {
         request.setChipId(chipId);
         request.setStorageConfig(source.getStorageConfig());
         request.setTags(tags);
+        request.setFailIfEmpty(source.getFailIfEmpty());
         request.setAsync(true);
         return post("/lathe/stage/data", request, IngestJobHandle.class);
     }
@@ -1305,22 +1329,29 @@ public class DatalatheClient {
      */
     private void throwForFailure(String method, String path, int statusCode, String body)
             throws IOException {
-        if (statusCode == 404 && body != null && !body.isEmpty()) {
+        String message = method + " " + path + " failed: " + statusCode + " " + body;
+        if (body != null && !body.isEmpty()) {
             try {
                 JsonNode node = objectMapper.readTree(body);
-                JsonNode codeNode = node.get("error_code");
-                if (codeNode != null && "chip_not_found".equals(codeNode.asText())) {
-                    JsonNode chipIdNode = node.get("chip_id");
-                    JsonNode messageNode = node.get("error");
-                    String chipId = chipIdNode != null ? chipIdNode.asText() : null;
-                    String message = messageNode != null ? messageNode.asText()
-                            : "Chip not available";
-                    throw new ChipNotFoundException(chipId, message);
+                String errorCode = textOrNull(node.get("error_code"));
+                if (statusCode == 404 && "chip_not_found".equals(errorCode)) {
+                    String chipId = textOrNull(node.get("chip_id"));
+                    String error = textOrNull(node.get("error"));
+                    throw new ChipNotFoundException(chipId,
+                            error != null ? error : "Chip not available");
+                }
+                String serverMessage = textOrNull(node.get("message"));
+                if (node.isObject() && (errorCode != null || serverMessage != null)) {
+                    throw new DatalatheApiException(message, statusCode, errorCode, serverMessage);
                 }
             } catch (com.fasterxml.jackson.core.JsonProcessingException ignored) {
                 // Body wasn't JSON — fall through to the generic IOException.
             }
         }
-        throw new IOException(method + " " + path + " failed: " + statusCode + " " + body);
+        throw new IOException(message);
+    }
+
+    private static String textOrNull(JsonNode node) {
+        return node == null || node.isNull() ? null : node.asText();
     }
 }
