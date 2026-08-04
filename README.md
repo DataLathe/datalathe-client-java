@@ -12,6 +12,7 @@ A Java client library for interacting with Datalathe, providing a JDBC-compatibl
 - Async ingest job handles (`createChipAsync` returns an `IngestJobHandle`; interrupted jobs resume via `resumeIngestJob`)
 - AI query support (`aiQuery` with typed `AiQueryRequest`/`AiQueryResponse`)
 - Connection management (`listConnections`, `upsertConnection`, `testConnection`, `deleteConnection` with `ConnectionInfo`)
+- Typed API errors (`DatalatheApiException` carries the HTTP status and the server's error code and message)
 - Null value handling
 - Type conversion and metadata support
 
@@ -158,6 +159,49 @@ Resolution is incremental: the first run for a 13-month trend report creates all
 chips, subsequent runs find them via search and create nothing, and when the
 window slides forward a month only the single new chip per partitioned table is
 created.
+
+When a create fails because the source has no rows (the engine's `EMPTY_SOURCE`
+error code, or the older "No partitions to register" failure on engines that
+predate it), the resolver logs a single INFO line and remembers the outcome: it
+skips re-creating that chip on subsequent resolves until a recheck window
+elapses (30 minutes by default). The window is configurable through the full
+constructor — `new ChipResolver(client, executor, timeoutMinutes,
+emptyRecheckMinutes)` — and `0` disables the cache so every resolve retries.
+A cached entry clears as soon as a create succeeds or a search finds a chip for
+that key. Other API errors log one WARN line (table, partition, error code,
+server message) without a stack trace; only transport-level or unexpected
+failures log ERROR with the full stack.
+
+### Error Handling
+
+Failed API calls throw `IOException`. When the engine returns a structured
+error body, the client throws `DatalatheApiException` (an `IOException`
+subclass) carrying the HTTP status and the server's machine-readable error
+code and message, so you can branch on the cause without matching exception
+message text:
+
+```java
+import com.datalathe.client.ChipNotFoundException;
+import com.datalathe.client.DatalatheApiException;
+
+try {
+    client.generateReport(chipIds, queries);
+} catch (ChipNotFoundException e) {
+    // A referenced chip is no longer available — re-stage it using
+    // e.getChipId() and retry
+} catch (DatalatheApiException e) {
+    // e.getStatusCode(), e.getErrorCode(), e.getServerMessage()
+}
+```
+
+`ChipNotFoundException` extends `DatalatheApiException`, and both remain
+`IOException`s with the same message format as before, so existing catch
+blocks and message-based handling are unaffected.
+
+`ChipSource` also carries an optional `failIfEmpty` flag: when `true`, a create
+whose source returns no rows fails with the `EMPTY_SOURCE` error code instead
+of registering an empty chip. The flag is serialized as `fail_if_empty` only
+when set, so requests against older engines are unchanged.
 
 ### Data Types
 
