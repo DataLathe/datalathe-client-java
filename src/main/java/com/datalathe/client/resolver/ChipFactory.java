@@ -86,6 +86,11 @@ public interface ChipFactory {
      * date) and change the value when chips staged under the old value must
      * be rebuilt.</p>
      *
+     * <p>Called once per table on every resolve, so return precomputed
+     * values — don't query a database or compute anything expensive here.
+     * Dynamic values (e.g. the current load generation's max date) belong in
+     * the factory's constructor, computed once per request.</p>
+     *
      * <p>Caveats: a chip for the table created by any other writer without
      * these tags is treated as stale and deleted; on a partitioned table a
      * value change evicts every partition's chip at once, so the next resolve
