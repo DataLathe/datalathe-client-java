@@ -1,5 +1,6 @@
 package com.datalathe.client.resolver;
 
+import com.datalathe.client.ChipNotFoundException;
 import com.datalathe.client.DatalatheApiException;
 import com.datalathe.client.DatalatheClient;
 import com.datalathe.client.SearchChipsResponse;
@@ -57,6 +58,17 @@ import java.util.function.LongSupplier;
  * On subsequent runs it finds them via search and creates nothing. When the window
  * slides forward one month, only the single new partitioned chip per partitioned
  * table is created — the other 12 months already exist.</p>
+ *
+ * <h3>Freshness</h3>
+ * <p>Chips are snapshots of their source; by default the resolver serves a found
+ * chip forever. A factory can opt a table into staleness tracking by returning
+ * expected tag entries from {@link ChipFactory#freshnessTags}. The resolver stamps
+ * those tags atomically when it creates the table's chips and, on every resolve,
+ * deletes any matched chip whose tags are missing an entry or hold a different
+ * value, then creates the replacement in the same pass — callers never see the
+ * eviction. Semantics, convergence guarantee, and caveats (other writers'
+ * untagged chips, partitioned-table mass re-stage, at-least-once eviction under
+ * concurrent resolvers) are documented on {@link ChipFactory#freshnessTags}.</p>
  */
 public class ChipResolver {
 
@@ -172,11 +184,21 @@ public class ChipResolver {
         // Classify tables via factory
         Set<String> partitionedTables = new HashSet<>();
         Set<String> unpartitionedTables = new HashSet<>();
+        Map<String, Map<String, String>> freshnessByTable = new HashMap<>();
         for (String table : tables) {
             if (factory.isPartitioned(table)) {
                 partitionedTables.add(table);
             } else {
                 unpartitionedTables.add(table);
+            }
+            Map<String, String> freshness = factory.freshnessTags(table);
+            if (freshness != null && !freshness.isEmpty()) {
+                if (freshness.containsKey(tagKey)) {
+                    throw new IllegalArgumentException(
+                            "Freshness tag key '" + tagKey + "' for table '" + table
+                                    + "' collides with the tenant tag key");
+                }
+                freshnessByTable.put(table, Map.copyOf(freshness));
             }
         }
 
@@ -194,25 +216,42 @@ public class ChipResolver {
         }
         String keyPrefix = tagKey + ":" + tagValue + "|";
 
+        Map<String, Map<String, String>> tagsByChip = new HashMap<>();
+        if (existing.getTags() != null) {
+            for (var tag : existing.getTags()) {
+                tagsByChip.computeIfAbsent(tag.getChipId(), k -> new HashMap<>())
+                        .put(tag.getKey(), tag.getValue());
+            }
+        }
+        Set<String> evictedChipIds = new HashSet<>();
+
         if (existing.getChips() != null) {
             for (var chip : existing.getChips()) {
                 String table = chip.getTableName();
 
                 if (unpartitionedTables.contains(table)
-                        && chip.getChipId().equals(chip.getSubChipId())
-                        && existingUnpartitionedTables.add(table)) {
-                    existingUnpartitionedIds.add(chip.getChipId());
-                    // Chip is now searchable — evict from inflight and empty caches
-                    String key = keyPrefix + table + "|" + null;
-                    inflight.remove(key);
-                    emptySince.remove(key);
+                        && chip.getChipId().equals(chip.getSubChipId())) {
+                    if (evictIfStale(chip, freshnessByTable.get(table), tagsByChip, evictedChipIds)) {
+                        continue;
+                    }
+                    if (existingUnpartitionedTables.add(table)) {
+                        existingUnpartitionedIds.add(chip.getChipId());
+                        // Chip is now searchable — evict from inflight and empty caches
+                        String key = keyPrefix + table + "|" + null;
+                        inflight.remove(key);
+                        emptySince.remove(key);
+                    }
                 } else if (partitionedTables.contains(table)
-                        && pvSet.contains(chip.getPartitionValue())
-                        && existingPartitionedKeys.add(table + "|" + chip.getPartitionValue())) {
-                    existingPartitionedIds.add(chip.getChipId());
-                    String key = keyPrefix + table + "|" + chip.getPartitionValue();
-                    inflight.remove(key);
-                    emptySince.remove(key);
+                        && pvSet.contains(chip.getPartitionValue())) {
+                    if (evictIfStale(chip, freshnessByTable.get(table), tagsByChip, evictedChipIds)) {
+                        continue;
+                    }
+                    if (existingPartitionedKeys.add(table + "|" + chip.getPartitionValue())) {
+                        existingPartitionedIds.add(chip.getChipId());
+                        String key = keyPrefix + table + "|" + chip.getPartitionValue();
+                        inflight.remove(key);
+                        emptySince.remove(key);
+                    }
                 }
             }
         }
@@ -243,12 +282,14 @@ public class ChipResolver {
         // Create missing chips in parallel with dedup gate
         List<CompletableFuture<String>> unpartitionedFutures = new ArrayList<>();
         for (String table : missingUnpartitioned) {
-            unpartitionedFutures.add(getOrCreate(table, null, tagKey, tagValue, factory));
+            unpartitionedFutures.add(getOrCreate(table, null, tagKey, tagValue, factory,
+                    freshnessByTable.get(table)));
         }
 
         List<CompletableFuture<String>> partitionedFutures = new ArrayList<>();
         for (PartitionGap gap : missingPartitioned) {
-            partitionedFutures.add(getOrCreate(gap.table(), gap.partitionValue(), tagKey, tagValue, factory));
+            partitionedFutures.add(getOrCreate(gap.table(), gap.partitionValue(), tagKey, tagValue, factory,
+                    freshnessByTable.get(gap.table())));
         }
 
         List<CompletableFuture<?>> allFutures = new ArrayList<>();
@@ -278,12 +319,19 @@ public class ChipResolver {
      */
     private CompletableFuture<String> getOrCreate(String table, String partitionValue,
                                                    String tagKey, String tagValue,
-                                                   ChipFactory factory) {
+                                                   ChipFactory factory,
+                                                   Map<String, String> freshnessTags) {
 
         String key = tagKey + ":" + tagValue + "|" + table + "|" + partitionValue;
 
         if (emptySuppressed(key)) {
             return CompletableFuture.completedFuture(null);
+        }
+
+        Map<String, String> tags = new HashMap<>();
+        tags.put(tagKey, tagValue);
+        if (freshnessTags != null) {
+            tags.putAll(freshnessTags);
         }
 
         return inflight.computeIfAbsent(key, k -> {
@@ -293,7 +341,7 @@ public class ChipResolver {
                     .supplyAsync(() -> {
                         try {
                             ChipSource source = factory.buildSource(table, partitionValue);
-                            String id = client.createChip(source, null, Map.of(tagKey, tagValue));
+                            String id = client.createChip(source, null, tags);
                             emptySince.remove(key);
                             return id;
                         } catch (IOException e) {
@@ -306,6 +354,51 @@ public class ChipResolver {
                         if (id == null || ex != null) inflight.remove(key);
                     });
         });
+    }
+
+    /**
+     * Deletes the chip when its tags don't carry every expected freshness
+     * entry. Returns true when the chip should be treated as missing (deleted
+     * here, already deleted concurrently, or evicted earlier in this pass).
+     * A failed delete keeps the stale chip in play — serving stale data beats
+     * creating a duplicate alongside a chip that wouldn't die.
+     */
+    private boolean evictIfStale(SearchChipsResponse.ChipRecord chip,
+                                 Map<String, String> expected,
+                                 Map<String, Map<String, String>> tagsByChip,
+                                 Set<String> evictedChipIds) {
+        if (expected == null) {
+            return false;
+        }
+        String chipId = chip.getChipId();
+        if (evictedChipIds.contains(chipId)) {
+            return true;
+        }
+        Map<String, String> chipTags = tagsByChip.getOrDefault(chipId, Map.of());
+        boolean stale = false;
+        for (var entry : expected.entrySet()) {
+            if (!entry.getValue().equals(chipTags.get(entry.getKey()))) {
+                stale = true;
+                break;
+            }
+        }
+        if (!stale) {
+            return false;
+        }
+        try {
+            client.deleteChip(chipId);
+            log.info("Evicted stale chip {} for table={} partition={} (freshness tags changed)",
+                    chipId, chip.getTableName(), chip.getPartitionValue());
+        } catch (ChipNotFoundException e) {
+            log.info("Stale chip {} for table={} already deleted concurrently",
+                    chipId, chip.getTableName());
+        } catch (IOException e) {
+            log.warn("Failed to evict stale chip {} for table={}; keeping it this resolve",
+                    chipId, chip.getTableName(), e);
+            return false;
+        }
+        evictedChipIds.add(chipId);
+        return true;
     }
 
     private void handleCreateFailure(String key, String table, String partitionValue, IOException e) {

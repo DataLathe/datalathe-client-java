@@ -2,6 +2,8 @@ package com.datalathe.client.resolver;
 
 import com.datalathe.client.types.ChipSource;
 
+import java.util.Map;
+
 /**
  * Strategy for classifying tables and building chip creation requests.
  *
@@ -67,4 +69,39 @@ public interface ChipFactory {
      * @return a fully configured ChipSource
      */
     ChipSource buildSource(String table, String partitionValue);
+
+    /**
+     * Expected freshness tags for the table's chips, or null/empty when its
+     * chips never go stale.
+     *
+     * <p>When non-empty, the {@link ChipResolver} stamps these tags on every
+     * chip it creates for the table (atomically with creation, alongside the
+     * tenant tag) and, on each resolve, deletes any existing chip whose tags
+     * are missing an entry or carry a different value — the replacement is
+     * created in the same pass. Because new chips are stamped with the
+     * current values, a freshly created chip can never be immediately stale.</p>
+     *
+     * <p>Semantics are equality-only by design: encode each staleness
+     * dimension as its own entry (e.g. a schema version, a load-generation
+     * date) and change the value when chips staged under the old value must
+     * be rebuilt.</p>
+     *
+     * <p>Called once per table on every resolve, so return precomputed
+     * values — don't query a database or compute anything expensive here.
+     * Dynamic values (e.g. the current load generation's max date) belong in
+     * the factory's constructor, computed once per request.</p>
+     *
+     * <p>Caveats: a chip for the table created by any other writer without
+     * these tags is treated as stale and deleted; on a partitioned table a
+     * value change evicts every partition's chip at once, so the next resolve
+     * re-stages all of them; and eviction is at-least-once — a concurrent
+     * resolver may briefly see a chip disappear mid-report and self-heal on
+     * its next resolve.</p>
+     *
+     * @param table the table name
+     * @return expected tag entries, or null/empty for no freshness tracking
+     */
+    default Map<String, String> freshnessTags(String table) {
+        return null;
+    }
 }
