@@ -24,7 +24,7 @@ The library is published to [Maven Central](https://central.sonatype.com/artifac
 <dependency>
     <groupId>com.datalathe</groupId>
     <artifactId>datalathe-client</artifactId>
-    <version>1.8.2</version>
+    <version>1.9.0</version>
 </dependency>
 ```
 
