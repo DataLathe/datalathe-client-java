@@ -5,7 +5,8 @@ name: Publish to Maven Central
 #   2. Configures Maven with Sonatype Central Portal credentials in
 #      ~/.m2/settings.xml under the server id `central` (matches the
 #      <publishingServerId>central</publishingServerId> in pom.xml)
-#   3. Runs `mvn deploy -DskipTests` — the central-publishing-maven-plugin
+#   3. Runs `mvn -Prelease deploy -DskipTests` — the release profile activates
+#      artifact signing, and the central-publishing-maven-plugin
 #      uploads + auto-publishes (autoPublish=true, waitUntil=published)
 #
 # Required secrets:
@@ -76,7 +77,7 @@ jobs:
           MAVEN_CENTRAL_USERNAME: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           MAVEN_CENTRAL_PASSWORD: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.MAVEN_GPG }}
-        run: mvn -B -DskipTests deploy
+        run: mvn -B -Prelease -DskipTests deploy
 
       - name: Confirm artifact landed
         run: |
