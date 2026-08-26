@@ -238,4 +238,158 @@ class ChipResolverFreshnessTest {
                         "tenant", "42", factory(false, Map.of("tenant", "43"))));
         assertEquals(0, server.getRequestCount());
     }
+
+    private static ChipFactory perPartitionFactory(boolean partitioned,
+                                                   Map<String, Map<String, String>> freshnessByPartition) {
+        return new ChipFactory() {
+            @Override
+            public boolean isPartitioned(String table) {
+                return partitioned;
+            }
+
+            @Override
+            public ChipSource buildSource(String table, String partitionValue) {
+                return ChipSource.builder()
+                        .sourceType(SourceType.MYSQL)
+                        .databaseName("db")
+                        .tableName(table)
+                        .query("SELECT * FROM " + table)
+                        .partition(partitionValue == null ? null
+                                : ChipSource.Partition.builder()
+                                        .partitionBy("month")
+                                        .partitionValues(List.of(partitionValue))
+                                        .build())
+                        .build();
+            }
+
+            @Override
+            public Map<String, String> freshnessTags(String table, String partitionValue) {
+                return freshnessByPartition.get(String.valueOf(partitionValue));
+            }
+        };
+    }
+
+    @Test
+    void perPartitionFreshnessEvictsOnlyThePartitionWhoseValueChanged() throws Exception {
+        enqueueSearch(chip("c1", "loans", "2026-01") + "," + chip("c2", "loans", "2026-02"),
+                tag("c1", "tenant", "42") + "," + tag("c1", "last_calc", "10:00") + ","
+                        + tag("c2", "tenant", "42") + "," + tag("c2", "last_calc", "11:00"));
+        enqueueJson(200, "{}");
+        enqueueJson(200, "{\"chip_id\":\"c3\"}");
+
+        ResolvedChips resolved = resolver.resolveForTables(Set.of("loans"),
+                List.of("2026-01", "2026-02"),
+                "tenant", "42", perPartitionFactory(true, Map.of(
+                        "2026-01", Map.of("last_calc", "12:00"),
+                        "2026-02", Map.of("last_calc", "11:00"))));
+
+        assertEquals(Set.of("c2", "c3"), Set.copyOf(resolved.allChipIds()));
+        List<RecordedRequest> requests = drainRequests();
+        assertEquals(3, requests.size());
+        assertEquals("DELETE", requests.get(1).getMethod());
+        assertTrue(requests.get(1).getPath().endsWith("/lathe/chips/c1"));
+    }
+
+    @Test
+    void createdPartitionedChipsCarryTheirOwnPartitionsFreshnessValues() throws Exception {
+        enqueueSearch("", "");
+        enqueueJson(200, "{\"chip_id\":\"c1\"}");
+        enqueueJson(200, "{\"chip_id\":\"c2\"}");
+
+        resolver.resolveForTables(Set.of("loans"), List.of("2026-01", "2026-02"),
+                "tenant", "42", perPartitionFactory(true, Map.of(
+                        "2026-01", Map.of("last_calc", "10:00"),
+                        "2026-02", Map.of("last_calc", "11:00"))));
+
+        List<RecordedRequest> requests = drainRequests();
+        assertEquals(3, requests.size());
+        Map<String, String> stamped = new java.util.HashMap<>();
+        for (RecordedRequest request : requests.subList(1, 3)) {
+            JsonNode body = MAPPER.readTree(request.getBody().readUtf8());
+            stamped.put(body.get("source_request").get("partition").get("partition_values").get(0).asText(),
+                    body.get("tags").get("last_calc").asText());
+        }
+        assertEquals(Map.of("2026-01", "10:00", "2026-02", "11:00"), stamped);
+    }
+
+    @Test
+    void partitionWithNullFreshnessIsNotChecked() throws Exception {
+        enqueueSearch(chip("c1", "loans", "2026-01") + "," + chip("c2", "loans", "2026-02"),
+                tag("c1", "tenant", "42") + "," + tag("c2", "tenant", "42"));
+        enqueueJson(200, "{}");
+        enqueueJson(200, "{\"chip_id\":\"c3\"}");
+
+        ResolvedChips resolved = resolver.resolveForTables(Set.of("loans"),
+                List.of("2026-01", "2026-02"),
+                "tenant", "42", perPartitionFactory(true,
+                        Map.of("2026-02", Map.of("last_calc", "11:00"))));
+
+        assertEquals(Set.of("c1", "c3"), Set.copyOf(resolved.allChipIds()));
+        List<RecordedRequest> requests = drainRequests();
+        assertEquals(3, requests.size());
+        assertEquals("DELETE", requests.get(1).getMethod());
+        assertTrue(requests.get(1).getPath().endsWith("/lathe/chips/c2"));
+    }
+
+    @Test
+    void unpartitionedTableUsesNullPartitionFreshness() throws Exception {
+        enqueueSearch(chip("c1", "users", null),
+                tag("c1", "tenant", "42") + "," + tag("c1", "last_calc", "10:00"));
+        enqueueJson(200, "{}");
+        enqueueJson(200, "{\"chip_id\":\"c2\"}");
+
+        ResolvedChips resolved = resolver.resolveForTables(Set.of("users"), List.of(),
+                "tenant", "42", perPartitionFactory(false,
+                        Map.of("null", Map.of("last_calc", "12:00"))));
+
+        assertEquals(List.of("c2"), resolved.allChipIds());
+        assertEquals(3, server.getRequestCount());
+    }
+
+    @Test
+    void freshnessTagsComputedOncePerTablePartitionPerResolve() throws Exception {
+        enqueueSearch(chip("c1", "loans", "2026-01"),
+                tag("c1", "tenant", "42") + "," + tag("c1", "last_calc", "10:00"));
+        enqueueJson(200, "{}");
+        enqueueJson(200, "{\"chip_id\":\"c2\"}");
+        enqueueJson(200, "{\"chip_id\":\"c3\"}");
+
+        Map<String, Integer> calls = new java.util.concurrent.ConcurrentHashMap<>();
+        ChipFactory counting = new ChipFactory() {
+            @Override
+            public boolean isPartitioned(String table) {
+                return true;
+            }
+
+            @Override
+            public ChipSource buildSource(String table, String partitionValue) {
+                return ChipSource.builder()
+                        .sourceType(SourceType.MYSQL)
+                        .databaseName("db")
+                        .tableName(table)
+                        .query("SELECT * FROM " + table)
+                        .build();
+            }
+
+            @Override
+            public Map<String, String> freshnessTags(String table, String partitionValue) {
+                calls.merge(table + "|" + partitionValue, 1, Integer::sum);
+                return Map.of("last_calc", "12:00");
+            }
+        };
+
+        resolver.resolveForTables(Set.of("loans"), List.of("2026-01", "2026-02"),
+                "tenant", "42", counting);
+
+        assertEquals(Map.of("loans|2026-01", 1, "loans|2026-02", 1), calls);
+    }
+
+    @Test
+    void perPartitionFreshnessKeyCollidingWithTenantTagKeyThrows() throws Exception {
+        assertThrows(IllegalArgumentException.class, () ->
+                resolver.resolveForTables(Set.of("loans"), List.of("2026-01"),
+                        "tenant", "42", perPartitionFactory(true,
+                                Map.of("2026-01", Map.of("tenant", "43")))));
+        assertEquals(0, server.getRequestCount());
+    }
 }

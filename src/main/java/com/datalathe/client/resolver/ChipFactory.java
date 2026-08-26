@@ -86,10 +86,11 @@ public interface ChipFactory {
      * date) and change the value when chips staged under the old value must
      * be rebuilt.</p>
      *
-     * <p>Called once per table on every resolve, so return precomputed
-     * values — don't query a database or compute anything expensive here.
-     * Dynamic values (e.g. the current load generation's max date) belong in
-     * the factory's constructor, computed once per request.</p>
+     * <p>Called once per table (unpartitioned) or once per table/partition
+     * pair (partitioned) on every resolve, so return precomputed values —
+     * don't query a database or compute anything expensive here. Dynamic
+     * values (e.g. the current load generation's max date) belong in the
+     * factory's constructor, computed once per request.</p>
      *
      * <p>Caveats: a chip for the table created by any other writer without
      * these tags is treated as stale and deleted; on a partitioned table a
@@ -103,5 +104,24 @@ public interface ChipFactory {
      */
     default Map<String, String> freshnessTags(String table) {
         return null;
+    }
+
+    /**
+     * Partition-aware variant of {@link #freshnessTags(String)}. For
+     * partitioned tables the resolver calls this once per table/partition
+     * pair, letting each partition's chip carry its own expected values
+     * (e.g. a per-date calc timestamp) so a value change evicts only that
+     * partition's chip. For unpartitioned tables {@code partitionValue} is
+     * null.
+     *
+     * <p>The default delegates to {@link #freshnessTags(String)}, giving
+     * every partition the same table-level values.</p>
+     *
+     * @param table          the table name
+     * @param partitionValue the partition value, or null for unpartitioned tables
+     * @return expected tag entries, or null/empty for no freshness tracking
+     */
+    default Map<String, String> freshnessTags(String table, String partitionValue) {
+        return freshnessTags(table);
     }
 }
