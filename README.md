@@ -24,7 +24,7 @@ The library is published to [Maven Central](https://central.sonatype.com/artifac
 <dependency>
     <groupId>com.datalathe</groupId>
     <artifactId>datalathe-client</artifactId>
-    <version>1.9.0</version>
+    <version>1.11.0</version>
 </dependency>
 ```
 
@@ -171,6 +171,55 @@ A cached entry clears as soon as a create succeeds or a search finds a chip for
 that key. Other API errors log one WARN line (table, partition, error code,
 server message) without a stack trace; only transport-level or unexpected
 failures log ERROR with the full stack.
+
+#### Freshness tags
+
+Chips are snapshots of their source, so by default the resolver serves a found
+chip forever. A factory can opt a table into staleness tracking by overriding
+`freshnessTags(String table)` to return the expected tag entries — encode each
+staleness dimension as its own entry (e.g. a schema version, a load-generation
+date) and change the value when chips staged under the old value must be
+rebuilt. The resolver stamps those tags on every chip it creates for the table
+(atomically with creation, alongside the tenant tag) and, on each resolve,
+deletes any existing chip whose tags are missing an entry or hold a different
+value — the replacement is created in the same pass, so callers never see the
+eviction, and a freshly created chip can never be immediately stale.
+
+The partition-aware overload `freshnessTags(String table, String
+partitionValue)` is called once per table/partition pair for partitioned
+tables, letting each partition's chip carry its own expected values (e.g. a
+per-date calc timestamp) so a value change evicts only that partition's chip.
+Its default delegates to the one-argument form, giving every partition the
+same table-level values; for unpartitioned tables `partitionValue` is `null`.
+
+```java
+ChipFactory factory = new ChipFactory() {
+    // isPartitioned / buildSource as above...
+
+    @Override
+    public Map<String, String> freshnessTags(String table) {
+        return Map.of("schema_version", "v3");
+    }
+
+    @Override
+    public Map<String, String> freshnessTags(String table, String partitionValue) {
+        if ("orders".equals(table) && partitionValue != null) {
+            return Map.of(
+                "schema_version", "v3",
+                "calc_date", calcDateFor(partitionValue));
+        }
+        return freshnessTags(table);
+    }
+};
+```
+
+Both methods are called on every resolve, so return precomputed values —
+don't query a database or compute anything expensive there. Dynamic values
+(e.g. the current load generation's max date) belong in the factory's
+constructor, computed once per request. Two caveats: a chip for the table
+created by any other writer without these tags is treated as stale and
+deleted, and eviction is at-least-once — a concurrent resolver may briefly
+see a chip disappear mid-report and self-heal on its next resolve.
 
 ### Error Handling
 
