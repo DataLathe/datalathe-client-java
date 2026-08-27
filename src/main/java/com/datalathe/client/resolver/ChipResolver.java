@@ -181,24 +181,28 @@ public class ChipResolver {
                                           String tagKey, String tagValue,
                                           ChipFactory factory) throws IOException {
 
-        // Classify tables via factory
+        Set<String> pvSet = new HashSet<>();
+        for (Object pv : partitionValues) {
+            pvSet.add(String.valueOf(pv));
+        }
+
+        // Classify tables via factory; expected freshness is per table for
+        // unpartitioned tables (keyed "table|null") and per table/partition
+        // pair for partitioned ones (keyed "table|pv")
         Set<String> partitionedTables = new HashSet<>();
         Set<String> unpartitionedTables = new HashSet<>();
-        Map<String, Map<String, String>> freshnessByTable = new HashMap<>();
+        Map<String, Map<String, String>> freshnessByKey = new HashMap<>();
         for (String table : tables) {
             if (factory.isPartitioned(table)) {
                 partitionedTables.add(table);
+                for (String pv : pvSet) {
+                    putFreshness(freshnessByKey, table, pv, tagKey,
+                            factory.freshnessTags(table, pv));
+                }
             } else {
                 unpartitionedTables.add(table);
-            }
-            Map<String, String> freshness = factory.freshnessTags(table);
-            if (freshness != null && !freshness.isEmpty()) {
-                if (freshness.containsKey(tagKey)) {
-                    throw new IllegalArgumentException(
-                            "Freshness tag key '" + tagKey + "' for table '" + table
-                                    + "' collides with the tenant tag key");
-                }
-                freshnessByTable.put(table, Map.copyOf(freshness));
+                putFreshness(freshnessByKey, table, null, tagKey,
+                        factory.freshnessTags(table, null));
             }
         }
 
@@ -210,10 +214,6 @@ public class ChipResolver {
         Set<String> existingPartitionedKeys = new HashSet<>();
         List<String> existingUnpartitionedIds = new ArrayList<>();
         List<String> existingPartitionedIds = new ArrayList<>();
-        Set<String> pvSet = new HashSet<>();
-        for (Object pv : partitionValues) {
-            pvSet.add(String.valueOf(pv));
-        }
         String keyPrefix = tagKey + ":" + tagValue + "|";
 
         Map<String, Map<String, String>> tagsByChip = new HashMap<>();
@@ -231,7 +231,8 @@ public class ChipResolver {
 
                 if (unpartitionedTables.contains(table)
                         && chip.getChipId().equals(chip.getSubChipId())) {
-                    if (evictIfStale(chip, freshnessByTable.get(table), tagsByChip, evictedChipIds)) {
+                    if (evictIfStale(chip, freshnessByKey.get(table + "|" + null),
+                            tagsByChip, evictedChipIds)) {
                         continue;
                     }
                     if (existingUnpartitionedTables.add(table)) {
@@ -243,7 +244,8 @@ public class ChipResolver {
                     }
                 } else if (partitionedTables.contains(table)
                         && pvSet.contains(chip.getPartitionValue())) {
-                    if (evictIfStale(chip, freshnessByTable.get(table), tagsByChip, evictedChipIds)) {
+                    if (evictIfStale(chip, freshnessByKey.get(table + "|" + chip.getPartitionValue()),
+                            tagsByChip, evictedChipIds)) {
                         continue;
                     }
                     if (existingPartitionedKeys.add(table + "|" + chip.getPartitionValue())) {
@@ -283,13 +285,13 @@ public class ChipResolver {
         List<CompletableFuture<String>> unpartitionedFutures = new ArrayList<>();
         for (String table : missingUnpartitioned) {
             unpartitionedFutures.add(getOrCreate(table, null, tagKey, tagValue, factory,
-                    freshnessByTable.get(table)));
+                    freshnessByKey.get(table + "|" + null)));
         }
 
         List<CompletableFuture<String>> partitionedFutures = new ArrayList<>();
         for (PartitionGap gap : missingPartitioned) {
             partitionedFutures.add(getOrCreate(gap.table(), gap.partitionValue(), tagKey, tagValue, factory,
-                    freshnessByTable.get(gap.table())));
+                    freshnessByKey.get(gap.table() + "|" + gap.partitionValue())));
         }
 
         List<CompletableFuture<?>> allFutures = new ArrayList<>();
@@ -311,6 +313,20 @@ public class ChipResolver {
         }
 
         return new ResolvedChips(unpartitionedIds, partitionedIds);
+    }
+
+    private static void putFreshness(Map<String, Map<String, String>> freshnessByKey,
+                                     String table, String partitionValue, String tagKey,
+                                     Map<String, String> freshness) {
+        if (freshness == null || freshness.isEmpty()) {
+            return;
+        }
+        if (freshness.containsKey(tagKey)) {
+            throw new IllegalArgumentException(
+                    "Freshness tag key '" + tagKey + "' for table '" + table
+                            + "' collides with the tenant tag key");
+        }
+        freshnessByKey.put(table + "|" + partitionValue, Map.copyOf(freshness));
     }
 
     /**
