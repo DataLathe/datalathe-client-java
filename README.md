@@ -172,6 +172,16 @@ that key. Other API errors log one WARN line (table, partition, error code,
 server message) without a stack trace; only transport-level or unexpected
 failures log ERROR with the full stack.
 
+A runtime exception thrown by your `ChipFactory.buildSource` (or by the create
+call itself) is logged at ERROR with the table and partition, then rethrown
+wrapped in an `IllegalStateException` whose message names them, so the
+`CompletionException` that escapes `resolveForTables` identifies the offending
+table. It fails the whole resolve, since a factory that cannot build a source
+is a configuration bug rather than a transient engine condition. At DEBUG the
+resolver also logs each built source (source type, database, table, partition
+config, file or S3 path, source chip ids); the SQL itself is logged only at
+TRACE.
+
 #### Freshness tags
 
 Chips are snapshots of their source, so by default the resolver serves a found
