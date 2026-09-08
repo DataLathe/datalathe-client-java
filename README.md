@@ -275,7 +275,7 @@ when set, so requests against older engines are unchanged.
 
 When the engine sheds load it returns HTTP 429 with a `Retry-After` header,
 having done no work on the request, so the client transparently retries 429
-responses for every method (up to 3 attempts by default, honoring
+responses for every method (up to 3 retries after the initial call by default, honoring
 `Retry-After`, with exponential backoff when the header is absent). Network
 errors are never retried. If retries are exhausted, the final 429 surfaces as
 a normal `DatalatheApiException`.
