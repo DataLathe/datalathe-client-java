@@ -138,7 +138,7 @@ public class ChipResolver {
     }
 
     /**
-     * Resolves chips from SQL queries with optional MySQL-to-DuckDB transform.
+     * Resolves chips from SQL queries with optional MySQL-to-engine-dialect transform.
      *
      * @param reportQueries   SQL queries to parse for table names
      * @param partitionValues partition values for partitioned tables (e.g. months)
