@@ -221,6 +221,25 @@ created by any other writer without these tags is treated as stale and
 deleted, and eviction is at-least-once — a concurrent resolver may briefly
 see a chip disappear mid-report and self-heal on its next resolve.
 
+### Raw chip queries
+
+`queryChips` runs a single read-only SQL statement against the chips' raw
+catalogs (engine 1.11+). Unlike report queries there is no view layer: the
+statement sees every table inside the attached chips via
+`s_<sub_chip_id>.main.<table>`, including staging leftovers. Results are
+truncated at the engine's `max_result_rows` cap (`isTruncated()` flag).
+
+```java
+import com.datalathe.client.types.ChipQueryResult;
+
+ChipQueryResult result = client.queryChips(
+    List.of("chip-abc"),
+    "SELECT COUNT(*) AS n FROM s_chip_abc.main.loans");
+result.getColumns().forEach(c -> System.out.println(c.getName() + " " + c.getDataType()));
+System.out.println(result.getRows());
+System.out.println(result.isTruncated());
+```
+
 ### Error Handling
 
 Failed API calls throw `IOException`. When the engine returns a structured
@@ -251,6 +270,29 @@ blocks and message-based handling are unaffected.
 whose source returns no rows fails with the `EMPTY_SOURCE` error code instead
 of registering an empty chip. The flag is serialized as `fail_if_empty` only
 when set, so requests against older engines are unchanged.
+
+### Client Configuration
+
+When the engine sheds load it returns HTTP 429 with a `Retry-After` header,
+having done no work on the request, so the client transparently retries 429
+responses for every method (up to 3 retries after the initial call by default, honoring
+`Retry-After`, with exponential backoff when the header is absent). Network
+errors are never retried. If retries are exhausted, the final 429 surfaces as
+a normal `DatalatheApiException`.
+
+Retry behavior is set through the three-argument constructor
+`DatalatheClient(String baseUrl, Map<String, String> defaultHeaders, RetryConfig retryConfig)`.
+Pass `RetryConfig.DISABLED` to surface 429s immediately, or tune the retry
+count and backoff with the builder:
+
+```java
+import com.datalathe.client.RetryConfig;
+
+DatalatheClient client = new DatalatheClient(
+    "http://localhost:3000",
+    Map.of(),
+    RetryConfig.builder().maxRetries(5).build());
+```
 
 ### Data Types
 

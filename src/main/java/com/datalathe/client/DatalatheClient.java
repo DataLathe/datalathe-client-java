@@ -642,7 +642,7 @@ public class DatalatheClient {
     }
 
     /**
-     * Tests a database connection by attempting a MySQL attach in DuckDB.
+     * Tests a database connection by attempting a MySQL attach in the engine.
      */
     public ConnectionInfo testConnection(String alias) throws IOException {
         return post("/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8) + "/test",
@@ -863,10 +863,10 @@ public class DatalatheClient {
 
     /**
      * Extracts the list of table names referenced in a SQL query.
-     * Optionally transforms the query from MySQL/MariaDB syntax to DuckDB.
+     * Optionally transforms the query from MySQL/MariaDB syntax to the engine's SQL dialect.
      *
      * @param query     The SQL query to analyze
-     * @param transform When true, also returns the query transformed to DuckDB
+     * @param transform When true, also returns the query transformed to the engine's SQL dialect
      *                  syntax
      * @return The response containing table names and optionally the transformed
      *         query
