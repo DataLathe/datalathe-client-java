@@ -2,7 +2,10 @@ package com.datalathe.client.resolver;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datalathe.client.DatalatheClient;
@@ -10,6 +13,7 @@ import com.datalathe.client.types.ChipSource;
 import com.datalathe.client.types.SourceType;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CopyOnWriteArrayList;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -94,6 +98,7 @@ class ChipResolverLoggingTest {
                 Set.of("users"), List.of(), "tenant", "42", FACTORY);
 
         List<LogEvent> failures = appender.events.stream()
+                .filter(e -> e.getLevel().isMoreSpecificThan(Level.INFO))
                 .filter(e -> !e.getMessage().getFormattedMessage().startsWith("Creating chip"))
                 .toList();
         assertEquals(1, failures.size());
@@ -144,5 +149,71 @@ class ChipResolverLoggingTest {
 
         assertEquals(Level.ERROR, event.getLevel());
         assertNotNull(event.getThrown());
+    }
+
+    @Test
+    void factoryExceptionLogsErrorWithTableAndRethrowsWithContext() {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"chips\":[],\"metadata\":[]}"));
+        ChipFactory broken = new ChipFactory() {
+            @Override
+            public boolean isPartitioned(String table) {
+                return true;
+            }
+
+            @Override
+            public ChipSource buildSource(String table, String partitionValue) {
+                throw new NullPointerException("def is null");
+            }
+        };
+
+        CompletionException thrown = assertThrows(CompletionException.class, () ->
+                new ChipResolver(client).resolveForTables(
+                        Set.of("users"), List.of("2026-08"), "tenant", "42", broken));
+
+        IllegalStateException wrapped = assertInstanceOf(IllegalStateException.class, thrown.getCause());
+        assertTrue(wrapped.getMessage().contains("table=users"));
+        assertTrue(wrapped.getMessage().contains("partition=2026-08"));
+        assertInstanceOf(NullPointerException.class, wrapped.getCause());
+
+        LogEvent event = appender.events.stream()
+                .filter(e -> e.getLevel() == Level.ERROR)
+                .findFirst().orElseThrow();
+        assertInstanceOf(NullPointerException.class, event.getThrown());
+        String message = event.getMessage().getFormattedMessage();
+        assertTrue(message.contains("buildSource"));
+        assertTrue(message.contains("table=users"));
+        assertTrue(message.contains("partition=2026-08"));
+    }
+
+    @Test
+    void builtSourceLoggedAtDebugWithSqlOnlyAtTrace() throws Exception {
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"chips\":[],\"metadata\":[]}"));
+        server.enqueue(new MockResponse()
+                .setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"chip_id\":\"c1\"}"));
+
+        new ChipResolver(client).resolveForTables(
+                Set.of("users"), List.of(), "tenant", "42", FACTORY);
+
+        LogEvent debug = appender.events.stream()
+                .filter(e -> e.getLevel() == Level.DEBUG)
+                .findFirst().orElseThrow();
+        String message = debug.getMessage().getFormattedMessage();
+        assertTrue(message.contains("table=users"));
+        assertTrue(message.contains("sourceType=MYSQL"));
+        assertTrue(message.contains("database=db"));
+        assertFalse(message.contains("SELECT"));
+
+        LogEvent trace = appender.events.stream()
+                .filter(e -> e.getLevel() == Level.TRACE)
+                .findFirst().orElseThrow();
+        assertTrue(trace.getMessage().getFormattedMessage().contains("SELECT * FROM users"));
     }
 }
