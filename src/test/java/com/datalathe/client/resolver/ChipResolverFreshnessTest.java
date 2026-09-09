@@ -200,16 +200,47 @@ class ChipResolverFreshnessTest {
     }
 
     @Test
-    void deleteFailureKeepsStaleChip() throws Exception {
+    void deleteFailureWithChipStillPresentKeepsStaleChip() throws Exception {
         enqueueSearch(chip("c1", "users", null),
                 tag("c1", "tenant", "42") + "," + tag("c1", "schema_version", "v1"));
         enqueueJson(500, "{\"error_code\":\"INTERNAL\",\"message\":\"boom\"}");
+        enqueueSearch(chip("c1", "users", null), tag("c1", "tenant", "42"));
 
         ResolvedChips resolved = resolver.resolveForTables(Set.of("users"), List.of(),
                 "tenant", "42", factory(false, Map.of("schema_version", "v2")));
 
         assertEquals(List.of("c1"), resolved.allChipIds());
-        assertEquals(2, server.getRequestCount());
+        assertEquals(3, server.getRequestCount());
+    }
+
+    @Test
+    void deleteFailureWithChipGoneRecreates() throws Exception {
+        enqueueSearch(chip("c1", "users", null),
+                tag("c1", "tenant", "42") + "," + tag("c1", "schema_version", "v1"));
+        server.enqueue(new MockResponse().setResponseCode(500)
+                .setBody("Chip query failed: Chip manager returned status: 404 Not Found GET /chip/c1"));
+        enqueueJson(404, "{\"error_code\":\"chip_not_found\",\"chip_id\":\"c1\",\"error\":\"gone\"}");
+        enqueueJson(200, "{\"chip_id\":\"c2\"}");
+
+        ResolvedChips resolved = resolver.resolveForTables(Set.of("users"), List.of(),
+                "tenant", "42", factory(false, Map.of("schema_version", "v2")));
+
+        assertEquals(List.of("c2"), resolved.allChipIds());
+        assertEquals(4, server.getRequestCount());
+    }
+
+    @Test
+    void deleteFailureWithLookupFailureKeepsStaleChip() throws Exception {
+        enqueueSearch(chip("c1", "users", null),
+                tag("c1", "tenant", "42") + "," + tag("c1", "schema_version", "v1"));
+        enqueueJson(500, "{\"error_code\":\"INTERNAL\",\"message\":\"boom\"}");
+        enqueueJson(503, "{\"error_code\":\"UNAVAILABLE\",\"message\":\"down\"}");
+
+        ResolvedChips resolved = resolver.resolveForTables(Set.of("users"), List.of(),
+                "tenant", "42", factory(false, Map.of("schema_version", "v2")));
+
+        assertEquals(List.of("c1"), resolved.allChipIds());
+        assertEquals(3, server.getRequestCount());
     }
 
     @Test

@@ -77,6 +77,31 @@ class ChipResolverEmptyCacheTest {
     }
 
     @Test
+    void createFailingOnTheCallingThreadStillResolves() throws Exception {
+        ExecutorService inline = new java.util.concurrent.AbstractExecutorService() {
+            private volatile boolean down;
+            @Override public void execute(Runnable r) { r.run(); }
+            @Override public void shutdown() { down = true; }
+            @Override public List<Runnable> shutdownNow() { down = true; return List.of(); }
+            @Override public boolean isShutdown() { return down; }
+            @Override public boolean isTerminated() { return down; }
+            @Override public boolean awaitTermination(long t, java.util.concurrent.TimeUnit u) { return true; }
+        };
+        ChipResolver resolver = new ChipResolver(client, inline, 1, 30);
+        enqueueEmptySearch();
+        enqueueCreateFailure("{\"error_code\":\"EMPTY_SOURCE\",\"message\":\"no rows\"}");
+
+        ResolvedChips first = resolve(resolver, "42");
+        assertTrue(first.allChipIds().isEmpty());
+
+        enqueueEmptySearch();
+        enqueueCreateFailure("{\"error_code\":\"PROCESSING_ERROR\",\"message\":\"boom\"}");
+        ResolvedChips second = resolve(resolver, "43");
+        assertTrue(second.allChipIds().isEmpty());
+        assertEquals(4, server.getRequestCount());
+    }
+
+    @Test
     void emptySourceErrorCodeSuppressesRetry() throws Exception {
         ChipResolver resolver = resolver(30);
         enqueueEmptySearch();
