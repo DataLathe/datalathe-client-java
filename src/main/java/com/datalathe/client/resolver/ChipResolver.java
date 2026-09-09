@@ -350,7 +350,9 @@ public class ChipResolver {
             tags.putAll(freshnessTags);
         }
 
-        return inflight.computeIfAbsent(key, k -> {
+        boolean[] started = {false};
+        CompletableFuture<String> future = inflight.computeIfAbsent(key, k -> {
+            started[0] = true;
             log.info("Creating chip for table={} partition={}", table, partitionValue);
 
             return CompletableFuture
@@ -373,11 +375,14 @@ public class ChipResolver {
                             throw contextualize("createChip", table, partitionValue, e);
                         }
                     }, executor)
-                    .orTimeout(timeoutMinutes, TimeUnit.MINUTES)
-                    .whenComplete((id, ex) -> {
-                        if (id == null || ex != null) inflight.remove(key);
-                    });
+                    .orTimeout(timeoutMinutes, TimeUnit.MINUTES);
         });
+        if (started[0]) {
+            future.whenComplete((id, ex) -> {
+                if (id == null || ex != null) inflight.remove(key, future);
+            });
+        }
+        return future;
     }
 
     /**
