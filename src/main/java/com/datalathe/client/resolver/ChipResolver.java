@@ -355,14 +355,22 @@ public class ChipResolver {
 
             return CompletableFuture
                     .supplyAsync(() -> {
+                        ChipSource source;
                         try {
-                            ChipSource source = factory.buildSource(table, partitionValue);
+                            source = factory.buildSource(table, partitionValue);
+                        } catch (RuntimeException e) {
+                            throw contextualize("ChipFactory.buildSource", table, partitionValue, e);
+                        }
+                        logBuiltSource(table, partitionValue, source);
+                        try {
                             String id = client.createChip(source, null, tags);
                             emptySince.remove(key);
                             return id;
                         } catch (IOException e) {
                             handleCreateFailure(key, table, partitionValue, e);
                             return null;
+                        } catch (RuntimeException e) {
+                            throw contextualize("createChip", table, partitionValue, e);
                         }
                     }, executor)
                     .orTimeout(timeoutMinutes, TimeUnit.MINUTES)
@@ -415,6 +423,35 @@ public class ChipResolver {
         }
         evictedChipIds.add(chipId);
         return true;
+    }
+
+    private static IllegalStateException contextualize(String stage, String table, String partitionValue,
+                                                        RuntimeException e) {
+        log.error("{} threw for table={} partition={}", stage, table, partitionValue, e);
+        return new IllegalStateException(
+                stage + " failed for table=" + table + " partition=" + partitionValue, e);
+    }
+
+    private static void logBuiltSource(String table, String partitionValue, ChipSource source) {
+        if (!log.isDebugEnabled()) {
+            return;
+        }
+        if (source == null) {
+            log.debug("ChipFactory.buildSource returned null for table={} partition={}", table, partitionValue);
+            return;
+        }
+        ChipSource.Partition partition = source.getPartition();
+        log.debug("Built chip source for table={} partition={} sourceType={} database={} sourceTable={} "
+                        + "partitionBy={} partitionValues={} filePath={} s3Path={} sourceChipIds={}",
+                table, partitionValue, source.getSourceType(), source.getDatabaseName(), source.getTableName(),
+                partition == null ? null : partition.getPartitionBy(),
+                partition == null ? null : partition.getPartitionValues(),
+                source.getFilePath(), source.getS3Path(), source.getSourceChipIds());
+        if (log.isTraceEnabled()) {
+            log.trace("Chip source query for table={} partition={} query={} partitionQuery={}",
+                    table, partitionValue, source.getQuery(),
+                    partition == null ? null : partition.getPartitionQuery());
+        }
     }
 
     private void handleCreateFailure(String key, String table, String partitionValue, IOException e) {
