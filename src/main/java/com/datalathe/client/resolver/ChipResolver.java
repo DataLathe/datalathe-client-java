@@ -384,8 +384,10 @@ public class ChipResolver {
      * Deletes the chip when its tags don't carry every expected freshness
      * entry. Returns true when the chip should be treated as missing (deleted
      * here, already deleted concurrently, or evicted earlier in this pass).
-     * A failed delete keeps the stale chip in play — serving stale data beats
-     * creating a duplicate alongside a chip that wouldn't die.
+     * A failed delete is followed by a lookup: a chip that is already gone
+     * counts as evicted, while one that is still present stays in play —
+     * serving stale data beats creating a duplicate alongside a chip that
+     * wouldn't die.
      */
     private boolean evictIfStale(SearchChipsResponse.ChipRecord chip,
                                  Map<String, String> expected,
@@ -417,12 +419,32 @@ public class ChipResolver {
             log.info("Stale chip {} for table={} already deleted concurrently",
                     chipId, chip.getTableName());
         } catch (IOException e) {
-            log.warn("Failed to evict stale chip {} for table={}; keeping it this resolve",
-                    chipId, chip.getTableName(), e);
-            return false;
+            if (!chipGone(chipId)) {
+                log.warn("Failed to evict stale chip {} for table={}; keeping it this resolve",
+                        chipId, chip.getTableName(), e);
+                return false;
+            }
+            log.info("Stale chip {} for table={} already deleted concurrently (delete failed, lookup confirms gone)",
+                    chipId, chip.getTableName());
         }
         evictedChipIds.add(chipId);
         return true;
+    }
+
+    /**
+     * Engines before 1.16.0 answer a delete of a missing chip with a 500 rather
+     * than a 404, so a lost eviction race looks like a real failure. A lookup
+     * settles it.
+     */
+    private boolean chipGone(String chipId) {
+        try {
+            client.getChip(chipId);
+            return false;
+        } catch (ChipNotFoundException e) {
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
     }
 
     private static IllegalStateException contextualize(String stage, String table, String partitionValue,

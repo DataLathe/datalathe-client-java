@@ -229,7 +229,11 @@ don't query a database or compute anything expensive there. Dynamic values
 constructor, computed once per request. Two caveats: a chip for the table
 created by any other writer without these tags is treated as stale and
 deleted, and eviction is at-least-once — a concurrent resolver may briefly
-see a chip disappear mid-report and self-heal on its next resolve.
+see a chip disappear mid-report and self-heal on its next resolve. When two
+resolvers race to evict the same chip, the loser's delete may fail; the
+resolver then looks the chip up and, if it is gone, proceeds to recreate
+rather than attaching a chip that no longer exists (engines before 1.16.0
+answer such a delete with a 500 instead of a 404).
 
 ### Error Handling
 
