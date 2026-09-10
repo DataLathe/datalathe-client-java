@@ -235,6 +235,22 @@ resolver then looks the chip up and, if it is gone, proceeds to recreate
 rather than attaching a chip that no longer exists (engines before 1.16.0
 answer such a delete with a 500 instead of a 404).
 
+### Connections and proxies
+
+The client pools HTTP connections and evicts an idle one after 30 seconds.
+
+That number is deliberately below the idle timeout of anything likely to sit
+between you and the engine. A load balancer closes an idle connection on its own
+schedule without telling the client, so a pooled connection that outlives the
+proxy's idle timeout is dead while still looking reusable. The next request
+written to it blocks until the read timeout expires — five minutes of apparent
+hang, with nothing arriving at the engine and nothing in its log. OkHttp's own
+default keep-alive is five minutes, which collides exactly with a common load
+balancer setting.
+
+If you terminate the engine behind a proxy with an idle timeout below 30
+seconds, raise the proxy rather than the client.
+
 ### Error Handling
 
 Failed API calls throw `IOException`. When the engine returns a structured

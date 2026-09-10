@@ -18,6 +18,23 @@ import java.util.concurrent.TimeUnit;
 
 public class DatalatheClient {
     private static final Logger logger = LogManager.getLogger(DatalatheClient.class);
+
+    /**
+     * How long an idle pooled connection is kept before it is evicted.
+     *
+     * <p>A load balancer or reverse proxy in front of the engine closes idle
+     * connections on its own schedule, and does so without telling the client.
+     * A pooled connection that outlives the proxy's idle timeout is dead but
+     * still looks reusable, so the next request written to it blocks until
+     * {@code readTimeout} expires: five minutes of apparent hang with nothing
+     * reaching the engine.</p>
+     *
+     * <p>OkHttp's own default is five minutes, which collides exactly with a
+     * common proxy setting. Thirty seconds sits below every default we have
+     * seen (AWS load balancers ship with sixty), so the pool always discards a
+     * connection before the far end does.</p>
+     */
+    private static final long IDLE_CONNECTION_KEEP_ALIVE_SECONDS = 30;
     private final String baseUrl;
     private final Map<String, String> defaultHeaders;
     private final OkHttpClient client;
@@ -79,6 +96,7 @@ public class DatalatheClient {
         this.defaultHeaders = Map.copyOf(defaultHeaders);
 
         OkHttpClient.Builder builder = new OkHttpClient.Builder()
+                .connectionPool(new ConnectionPool(5, IDLE_CONNECTION_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS))
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(5, TimeUnit.MINUTES)
                 .writeTimeout(30, TimeUnit.SECONDS);
