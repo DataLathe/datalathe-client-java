@@ -44,7 +44,12 @@ public class DatalatheResultSet extends AbstractResultSet {
     public boolean getBoolean(int columnIndex) throws SQLException {
         String value = getValue(columnIndex);
         wasNull = value == null;
-        return value != null && Boolean.parseBoolean(value);
+        if (value == null) return false;
+        try {
+            return Double.parseDouble(value) != 0;
+        } catch (NumberFormatException e) {
+            return Boolean.parseBoolean(value);
+        }
     }
 
     @Override
