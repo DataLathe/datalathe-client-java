@@ -137,6 +137,32 @@ class DatalatheResultSetTest {
     }
 
     @Test
+    void testGetBooleanOnNumericColumns() throws SQLException {
+        Schema flag = new Schema();
+        flag.setName("flag");
+        flag.setDataType("Int8");
+        List<List<String>> rows = new ArrayList<>();
+        for (String v : new String[] { "1", "0", "2", "0.0" }) {
+            List<String> row = new ArrayList<>();
+            row.add(v);
+            rows.add(row);
+        }
+        Result result = new Result();
+        result.setResult(rows);
+        result.setSchema(List.of(flag));
+        DatalatheResultSet rs = new DatalatheResultSet(result);
+
+        rs.next();
+        assertTrue(rs.getBoolean(1));
+        rs.next();
+        assertFalse(rs.getBoolean("flag"));
+        rs.next();
+        assertTrue(rs.getBoolean(1));
+        rs.next();
+        assertFalse(rs.getBoolean(1));
+    }
+
+    @Test
     void testGetDouble() throws SQLException {
         resultSet.next();
         assertEquals(95.5, resultSet.getDouble(5), 0.001);
