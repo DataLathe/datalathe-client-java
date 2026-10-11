@@ -235,6 +235,24 @@ resolver then looks the chip up and, if it is gone, proceeds to recreate
 rather than attaching a chip that no longer exists (engines before 1.16.0
 answer such a delete with a 500 instead of a 404).
 
+### Correlation IDs
+
+Tag requests so the engine's logs, ingest jobs and chips can be traced back to
+your own request:
+
+```java
+DatalatheClient scoped = client.withCorrelationId(MDC.get("CorrelationId"));
+scoped.createChipAsync(source, chipId, tags);
+new ChipResolver(scoped, executor, 10).resolve(queries);
+```
+
+`withCorrelationId` returns a lightweight copy that shares the connection pool,
+so create one per request. Read the ID on the thread that has it (your MDC is
+empty on executor threads) and pass the copy along. Valid IDs match
+`[A-Za-z0-9._:-]{1,128}`; a null, blank or invalid ID leaves requests untagged
+and never throws. `IngestJob.getCorrelationId()` and chip metadata return the
+stored ID.
+
 ### Connections and proxies
 
 The client pools HTTP connections and evicts an idle one after 30 seconds.
