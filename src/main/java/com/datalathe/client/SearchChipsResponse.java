@@ -53,6 +53,8 @@ public class SearchChipsResponse {
         private Long ttlDays;
         @JsonProperty("partition_column")
         private String partitionColumn;
+        @JsonProperty("correlation_id")
+        private String correlationId;
     }
 
     @Data
