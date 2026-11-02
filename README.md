@@ -243,11 +243,12 @@ your own request:
 ```java
 DatalatheClient scoped = client.withCorrelationId(MDC.get("CorrelationId"));
 scoped.createChipAsync(source, chipId, tags);
-new ChipResolver(scoped, executor, 10).resolve(queries);
 ```
 
 `withCorrelationId` returns a lightweight copy that shares the connection pool,
-so create one per request. Read the ID on the thread that has it (your MDC is
+so create one per request. A `ChipResolver` keeps the client it was built with,
+so a shared resolver tags the chips it creates only when it was built on a
+scoped client. Read the ID on the thread that has it (your MDC is
 empty on executor threads) and pass the copy along. Valid IDs match
 `[A-Za-z0-9._:-]{1,128}`; a null, blank or invalid ID leaves requests untagged
 and never throws. `IngestJob.getCorrelationId()` and chip metadata return the
