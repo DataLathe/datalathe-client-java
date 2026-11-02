@@ -115,4 +115,42 @@ class CorrelationIdTest {
         assertEquals("nc-job", withId.getCorrelationId());
         assertNull(without.getCorrelationId());
     }
+    static class CountingClient extends DatalatheClient {
+        final java.util.concurrent.atomic.AtomicInteger searches;
+
+        CountingClient(String baseUrl) {
+            super(baseUrl);
+            this.searches = new java.util.concurrent.atomic.AtomicInteger();
+        }
+
+        private CountingClient(CountingClient base, okhttp3.OkHttpClient http) {
+            super(base, http);
+            this.searches = base.searches;
+        }
+
+        @Override
+        protected DatalatheClient copyWith(okhttp3.OkHttpClient http) {
+            return new CountingClient(this, http);
+        }
+
+        @Override
+        public SearchChipsResponse searchChips(String tableName, String partitionValue,
+                                               String tagKey, String tagValue) throws IOException {
+            searches.incrementAndGet();
+            return super.searchChips(tableName, partitionValue, tagKey, tagValue);
+        }
+    }
+
+    @Test
+    void subclassKeepsItsOverridesThroughCopyWith() throws Exception {
+        CountingClient base = new CountingClient(baseUrl());
+        DatalatheClient scoped = base.withCorrelationId("nc-sub");
+        assertInstanceOf(CountingClient.class, scoped);
+
+        enqueueEmptySearch();
+        scoped.searchChips("t", null, null, null);
+
+        assertEquals(1, base.searches.get());
+        assertEquals("nc-sub", server.takeRequest().getHeader("X-Correlation-ID"));
+    }
 }
