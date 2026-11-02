@@ -39,4 +39,7 @@ public class IngestJob {
 
     @JsonProperty("updated_at")
     private Long updatedAt;
+
+    @JsonProperty("correlation_id")
+    private String correlationId;
 }

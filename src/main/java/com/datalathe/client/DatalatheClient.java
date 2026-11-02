@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 public class DatalatheClient {
     private static final Logger logger = LogManager.getLogger(DatalatheClient.class);
@@ -35,11 +36,14 @@ public class DatalatheClient {
      * connection before the far end does.</p>
      */
     private static final long IDLE_CONNECTION_KEEP_ALIVE_SECONDS = 30;
+
+    /** Header carrying the caller's correlation ID; see {@link #withCorrelationId}. */
+    public static final String CORRELATION_ID_HEADER = "X-Correlation-ID";
+    private static final Pattern CORRELATION_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
     private final String baseUrl;
     private final Map<String, String> defaultHeaders;
     private final OkHttpClient client;
-    private final ObjectMapper objectMapper = new ObjectMapper()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private final ObjectMapper objectMapper;
     private final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
 
     /**
@@ -116,6 +120,52 @@ public class DatalatheClient {
         }
 
         this.client = builder.build();
+        this.objectMapper = new ObjectMapper()
+                .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    }
+
+    private DatalatheClient(String baseUrl, Map<String, String> defaultHeaders,
+                            OkHttpClient client, ObjectMapper objectMapper) {
+        this.baseUrl = baseUrl;
+        this.defaultHeaders = defaultHeaders;
+        this.client = client;
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * Returns a client that sends {@code X-Correlation-ID: correlationId} on every
+     * request, so the engine tags all of its logs, the ingest jobs and the chips
+     * those requests create with it. The copy shares this client's connection
+     * pool and is cheap to create per request:
+     *
+     * <pre>{@code
+     * DatalatheClient c = client.withCorrelationId(MDC.get("CorrelationId"));
+     * }</pre>
+     *
+     * <p>Valid IDs match {@code [A-Za-z0-9._:-]{1,128}} (UUIDs pass). A null or
+     * blank ID returns this client unchanged; an invalid one logs a warning and
+     * also returns this client unchanged, and the engine generates an ID.
+     * Never throws.</p>
+     */
+    public DatalatheClient withCorrelationId(String correlationId) {
+        if (correlationId == null || correlationId.isBlank()) {
+            return this;
+        }
+        if (!CORRELATION_ID_PATTERN.matcher(correlationId).matches()) {
+            logger.warn("Ignoring correlation ID that does not match {}; the engine will generate one",
+                    CORRELATION_ID_PATTERN.pattern());
+            return this;
+        }
+        OkHttpClient scoped = client.newBuilder()
+                .addInterceptor(chain -> chain.proceed(chain.request().newBuilder()
+                        .header(CORRELATION_ID_HEADER, correlationId)
+                        .build()))
+                .build();
+        return new DatalatheClient(baseUrl, defaultHeaders, scoped, objectMapper);
+    }
+
+    OkHttpClient httpClient() {
+        return client;
     }
 
     /**
