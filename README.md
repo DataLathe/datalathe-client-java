@@ -243,7 +243,7 @@ your own request:
 ```java
 DatalatheClient scoped = client.withCorrelationId(MDC.get("CorrelationId"));
 scoped.createChipAsync(source, chipId, tags);
-new ChipResolver(scoped, executor, 10).resolve(queries);
+resolver.withCorrelationId(MDC.get("CorrelationId")).resolve(queries);
 ```
 
 `withCorrelationId` returns a lightweight copy that shares the connection pool,
@@ -252,6 +252,19 @@ empty on executor threads) and pass the copy along. Valid IDs match
 `[A-Za-z0-9._:-]{1,128}`; a null, blank or invalid ID leaves requests untagged
 and never throws. `IngestJob.getCorrelationId()` and chip metadata return the
 stored ID.
+
+`ChipResolver.withCorrelationId` returns a view on the same resolver: it
+shares the executor, the in-flight creates and the empty-source cache, so
+concurrent requests still stage each chip once. Don't build a second
+`ChipResolver` per request for this; separate resolvers don't see each
+other's in-flight creates. When two requests race for the same chip, the
+chip carries the ID of the request that started the create, and
+`searchChips` by the other ID won't list it.
+
+A subclass of `DatalatheClient` that overrides request methods must also
+override `copyWith(OkHttpClient)` and return itself through the protected
+copy constructor, or the copy `withCorrelationId` returns is a plain
+`DatalatheClient` without the overrides.
 
 ### Connections and proxies
 

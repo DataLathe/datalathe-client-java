@@ -81,9 +81,8 @@ public class ChipResolver {
     private final ExecutorService executor;
     private final long timeoutMinutes;
     private final long emptyRecheckMinutes;
-    private final ConcurrentHashMap<String, CompletableFuture<String>> inflight =
-            new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Long> emptySince = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, CompletableFuture<String>> inflight;
+    private final ConcurrentHashMap<String, Long> emptySince;
 
     LongSupplier clock = System::currentTimeMillis;
 
@@ -112,6 +111,34 @@ public class ChipResolver {
         this.executor = executor;
         this.timeoutMinutes = timeoutMinutes;
         this.emptyRecheckMinutes = emptyRecheckMinutes;
+        this.inflight = new ConcurrentHashMap<>();
+        this.emptySince = new ConcurrentHashMap<>();
+    }
+
+    private ChipResolver(ChipResolver base, DatalatheClient client) {
+        this.client = client;
+        this.executor = base.executor;
+        this.timeoutMinutes = base.timeoutMinutes;
+        this.emptyRecheckMinutes = base.emptyRecheckMinutes;
+        this.inflight = base.inflight;
+        this.emptySince = base.emptySince;
+        this.clock = base.clock;
+    }
+
+    /**
+     * Returns a resolver whose requests carry {@code correlationId} (see
+     * {@link DatalatheClient#withCorrelationId}) and that shares this resolver's
+     * executor, in-flight creates and empty-source cache. Use it instead of a
+     * second {@code ChipResolver}: two resolvers built from the same client do
+     * not see each other's in-flight creates and stage the same chip twice.
+     *
+     * <p>When two scoped resolvers race for the same chip, one create runs and
+     * both wait on it, so the chip carries the ID of whichever started it.
+     * A null, blank or invalid ID returns this resolver.</p>
+     */
+    public ChipResolver withCorrelationId(String correlationId) {
+        DatalatheClient scoped = client.withCorrelationId(correlationId);
+        return scoped == client ? this : new ChipResolver(this, scoped);
     }
 
     public long getEmptyRecheckMinutes() {
