@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Verifies automatic retry of HTTP 429 responses: retries honor
  * {@code Retry-After}, fall back to exponential backoff without it,
  * exhaust after 3 retries with the same exception surface as before,
- * can be disabled, and never fire for non-429 statuses.
+ * can be disabled, and never fire for a 500.
  */
 class RetryOn429Test {
 
