@@ -124,12 +124,17 @@ public class DatalatheClient {
                 .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
     }
 
-    private DatalatheClient(String baseUrl, Map<String, String> defaultHeaders,
-                            OkHttpClient client, ObjectMapper objectMapper) {
-        this.baseUrl = baseUrl;
-        this.defaultHeaders = defaultHeaders;
+    /**
+     * Copies {@code base} onto a different HTTP client. The copy keeps the base
+     * URL, default headers and JSON mapper; the HTTP client is what carries any
+     * per-request behavior such as a correlation ID. Subclasses use this from
+     * their {@link #copyWith} override.
+     */
+    protected DatalatheClient(DatalatheClient base, OkHttpClient client) {
+        this.baseUrl = base.baseUrl;
+        this.defaultHeaders = base.defaultHeaders;
         this.client = client;
-        this.objectMapper = objectMapper;
+        this.objectMapper = base.objectMapper;
     }
 
     /**
@@ -146,6 +151,9 @@ public class DatalatheClient {
      * blank ID returns this client unchanged; an invalid one logs a warning and
      * also returns this client unchanged, and the engine generates an ID.
      * Never throws.</p>
+     *
+     * <p>The copy is built by {@link #copyWith}, so a subclass that overrides
+     * it keeps its own behavior in the copy.</p>
      */
     public DatalatheClient withCorrelationId(String correlationId) {
         if (correlationId == null || correlationId.isBlank()) {
@@ -161,7 +169,19 @@ public class DatalatheClient {
                         .header(CORRELATION_ID_HEADER, correlationId)
                         .build()))
                 .build();
-        return new DatalatheClient(baseUrl, defaultHeaders, scoped, objectMapper);
+        return copyWith(scoped);
+    }
+
+    /**
+     * Builds the copy that {@link #withCorrelationId} returns. A subclass that
+     * overrides client methods overrides this too and returns an instance of
+     * itself through the protected copy constructor, otherwise the copy is a
+     * plain {@code DatalatheClient} and the overrides are lost on it.
+     *
+     * @param httpClient the HTTP client the copy sends requests with
+     */
+    protected DatalatheClient copyWith(OkHttpClient httpClient) {
+        return new DatalatheClient(this, httpClient);
     }
 
     OkHttpClient httpClient() {
