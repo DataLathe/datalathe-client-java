@@ -5,6 +5,7 @@ import com.datalathe.client.DatalatheApiException;
 import com.datalathe.client.DatalatheClient;
 import com.datalathe.client.SearchChipsResponse;
 import com.datalathe.client.types.ChipSource;
+import com.datalathe.client.types.SeriesRef;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -12,6 +13,7 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.LongSupplier;
+import java.util.regex.Pattern;
 
 /**
  * Resolves the set of chips needed for a report, creating any that are missing.
@@ -76,6 +78,7 @@ public class ChipResolver {
     private static final long DEFAULT_TIMEOUT_MINUTES = 10;
     private static final long DEFAULT_EMPTY_RECHECK_MINUTES = 30;
     private static final String LEGACY_EMPTY_MESSAGE = "No partitions to register";
+    private static final Pattern SERIES_ID = Pattern.compile("^[A-Za-z0-9._:-]{1,128}$");
 
     private final DatalatheClient client;
     private final ExecutorService executor;
@@ -83,6 +86,7 @@ public class ChipResolver {
     private final long emptyRecheckMinutes;
     private final ConcurrentHashMap<String, CompletableFuture<String>> inflight;
     private final ConcurrentHashMap<String, Long> emptySince;
+    private final SeriesNamer seriesNamer;
 
     LongSupplier clock = System::currentTimeMillis;
 
@@ -113,9 +117,15 @@ public class ChipResolver {
         this.emptyRecheckMinutes = emptyRecheckMinutes;
         this.inflight = new ConcurrentHashMap<>();
         this.emptySince = new ConcurrentHashMap<>();
+        this.seriesNamer = null;
     }
 
     private ChipResolver(ChipResolver base, DatalatheClient client) {
+        this(base, client, base.seriesNamer);
+    }
+
+    private ChipResolver(ChipResolver base, DatalatheClient client, SeriesNamer seriesNamer) {
+        this.seriesNamer = seriesNamer;
         this.client = client;
         this.executor = base.executor;
         this.timeoutMinutes = base.timeoutMinutes;
@@ -139,6 +149,40 @@ public class ChipResolver {
     public ChipResolver withCorrelationId(String correlationId) {
         DatalatheClient scoped = client.withCorrelationId(correlationId);
         return scoped == client ? this : new ChipResolver(this, scoped);
+    }
+
+    /**
+     * Returns a resolver that publishes every chip it creates into the series
+     * that {@code namer} returns for the chip's isolation tag, and that shares
+     * this resolver's executor, in-flight creates and empty-source cache.
+     *
+     * <p>A series holds one current chip per table and partition, so
+     * {@code series:<id>@latest} reads the tag's whole data set and the series
+     * can be browsed without knowing chip IDs. Each partition of a table must
+     * be its own chip partition: two chips with the same table and partition
+     * value in one series replace each other.</p>
+     *
+     * <p>A null or invalid series ID leaves that chip out of any series; it
+     * never fails the create. The engine needs a chip manager.</p>
+     */
+    public ChipResolver withSeries(SeriesNamer namer) {
+        return new ChipResolver(this, client, namer);
+    }
+
+    private SeriesRef seriesFor(String tagKey, String tagValue) {
+        if (seriesNamer == null) {
+            return null;
+        }
+        String id = seriesNamer.seriesId(tagKey, tagValue);
+        if (id == null) {
+            return null;
+        }
+        if (!SERIES_ID.matcher(id).matches()) {
+            log.warn("Series id '{}' for tag {}={} is not valid; creating the chip outside any series",
+                    id, tagKey, tagValue);
+            return null;
+        }
+        return SeriesRef.of(id);
     }
 
     public long getEmptyRecheckMinutes() {
@@ -377,6 +421,8 @@ public class ChipResolver {
             tags.putAll(freshnessTags);
         }
 
+        SeriesRef series = seriesFor(tagKey, tagValue);
+
         boolean[] started = {false};
         CompletableFuture<String> future = inflight.computeIfAbsent(key, k -> {
             started[0] = true;
@@ -392,7 +438,9 @@ public class ChipResolver {
                         }
                         logBuiltSource(table, partitionValue, source);
                         try {
-                            String id = client.createChip(source, null, tags);
+                            String id = series == null
+                                    ? client.createChip(source, null, tags)
+                                    : client.createChip(source, null, tags, series);
                             emptySince.remove(key);
                             return id;
                         } catch (IOException e) {

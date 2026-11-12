@@ -38,6 +38,10 @@ public class CreateChipRequest {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Boolean failIfEmpty;
 
+    @JsonProperty("series")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private SeriesRef series;
+
     public CreateChipRequest(SourceType sourceType, ChipSource source) {
         this.sourceType = sourceType;
         this.source = source;
