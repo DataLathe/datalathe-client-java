@@ -23,5 +23,12 @@ class SeriesRefTest {
     void aSeriesWithoutASlotNameOmitsPartition() {
         JsonNode json = mapper.valueToTree(SeriesRef.of("1234"));
         assertFalse(json.has("partition"));
+        assertFalse(json.has("hold"));
+    }
+
+    @Test
+    void aHeldSeriesSendsHold() {
+        JsonNode json = mapper.valueToTree(SeriesRef.held("1234"));
+        assertEquals(true, json.get("hold").asBoolean());
     }
 }

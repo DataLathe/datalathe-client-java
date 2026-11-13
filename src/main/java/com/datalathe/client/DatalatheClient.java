@@ -618,6 +618,24 @@ public class DatalatheClient {
      */
     public IngestJobHandle createChipAsync(ChipSource source, String chipId, Map<String, String> tags)
             throws IOException {
+        return createChipAsync(source, chipId, tags, null);
+    }
+
+    /**
+     * Submits an asynchronous chip-creating ingest and, when {@code series} is
+     * set, publishes the chip into that series. With {@link SeriesRef#held},
+     * the chip stays out of the series until {@link #publishToSeries}.
+     *
+     * @param source The fully configured source
+     * @param chipId Optional chip ID to use
+     * @param tags   Optional tags to apply atomically with creation
+     * @param series Optional series to publish the chip into
+     * @return A handle with the job ID and the chip ID being created
+     * @throws IOException              if the API call fails
+     * @throws IllegalArgumentException if sourceType is not set on the source
+     */
+    public IngestJobHandle createChipAsync(ChipSource source, String chipId, Map<String, String> tags,
+                                           SeriesRef series) throws IOException {
         if (source.getSourceType() == null) {
             throw new IllegalArgumentException("sourceType must be set on the Source");
         }
@@ -628,8 +646,26 @@ public class DatalatheClient {
         request.setStorageConfig(source.getStorageConfig());
         request.setTags(tags);
         request.setFailIfEmpty(source.getFailIfEmpty());
+        request.setSeries(series);
         request.setAsync(true);
         return post("/lathe/stage/data", request, IngestJobHandle.class);
+    }
+
+    /**
+     * Publishes a chip that was created with {@link SeriesRef#held} into its
+     * series. Safe to repeat: a chip that is already published returns the
+     * outcome {@code already_published}.
+     *
+     * @param chipId The held chip
+     * @return The series, the version, and the outcome
+     * @throws IOException if the API call fails, including a chip without a
+     *                     held version and a schema that the series refuses
+     */
+    public SeriesPublishResult publishToSeries(String chipId) throws IOException {
+        return post(
+                "/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8) + "/series/publish",
+                Map.of(),
+                SeriesPublishResult.class);
     }
 
     /**

@@ -210,6 +210,10 @@ your own `SeriesNamer` to build a different ID.
 - For several unpartitioned chips of one table, such as one chip per date,
   call `createChip` with `SeriesRef.of(id, partition)`. The partition names
   the chip's slot, and the chip itself stays unpartitioned.
+- To check a chip before it joins a series, create it with
+  `SeriesRef.held(id)`, then call `client.publishToSeries(chipId)` when the
+  check passes, or delete the chip when it fails. A deleted held chip leaves
+  the series as it was.
 - A subclass of `DatalatheClient` that overrides
   `createChip(ChipSource, String, Map)` must also override the four-argument
   overload, which the resolver calls when a series is set.

@@ -42,8 +42,21 @@ public class SeriesRef {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String partition;
 
+    /**
+     * When true, the chip keeps its reserved version but stays out of the
+     * series until {@code DatalatheClient.publishToSeries}. Deleting the chip
+     * instead leaves the series as it was.
+     */
+    @JsonProperty("hold")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Boolean hold;
+
     public static SeriesRef of(String id) {
         return SeriesRef.builder().id(id).build();
+    }
+
+    public static SeriesRef held(String id) {
+        return SeriesRef.builder().id(id).hold(true).build();
     }
 
     public static SeriesRef of(String id, String partition) {
