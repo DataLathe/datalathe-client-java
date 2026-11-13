@@ -75,6 +75,29 @@ class IngestJobsTest {
     }
 
     @Test
+    void createChipAsyncSendsAHeldSeriesAndPublishesIt() throws Exception {
+        enqueueJson(202, "{\"job_id\":\"job-1\",\"chip_id\":\"chip-1\"}");
+        enqueueJson(200, "{\"series_id\":\"1234\",\"version\":7,\"outcome\":\"published\"}");
+
+        ChipSource source = ChipSource.builder()
+                .sourceType(SourceType.MYSQL)
+                .databaseName("test_db")
+                .tableName("users")
+                .query("SELECT * FROM users")
+                .build();
+        client.createChipAsync(source, null, null, com.datalathe.client.types.SeriesRef.held("1234"));
+        com.datalathe.client.types.SeriesPublishResult result = client.publishToSeries("chip-1");
+
+        String create = server.takeRequest().getBody().readUtf8();
+        assertTrue(create.contains("\"series\":{\"id\":\"1234\",\"hold\":true}"));
+        RecordedRequest publish = server.takeRequest();
+        assertEquals("/lathe/chips/chip-1/series/publish", publish.getPath());
+        assertEquals("POST", publish.getMethod());
+        assertEquals("published", result.getOutcome());
+        assertEquals(7L, result.getVersion());
+    }
+
+    @Test
     void createChipAsyncRejectsSourceWithoutSourceType() {
         ChipSource source = ChipSource.builder().tableName("users").build();
         assertThrows(IllegalArgumentException.class, () -> client.createChipAsync(source));

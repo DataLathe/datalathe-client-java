@@ -182,6 +182,42 @@ resolver also logs each built source (source type, database, table, partition
 config, file or S3 path, source chip ids); the SQL itself is logged only at
 TRACE.
 
+#### Publishing chips into a series
+
+A series is a named collection that holds the current chip for each table and
+partition. When the resolver publishes each tenant's chips into a series, a
+report can read the tenant's whole data set with one reference,
+`series:1234@latest`, and the TUI can browse the series without chip IDs.
+
+```java
+import com.datalathe.client.resolver.SeriesNamer;
+
+ChipResolver resolver = new ChipResolver(client)
+    .withSeries(SeriesNamer.tagValue("tenant"));
+```
+
+`withSeries` returns a resolver that shares the original's executor and
+in-flight creates. `SeriesNamer.tagValue("tenant")` names the series after the
+value of the `tenant` tag and leaves chips with any other tag key out. Pass
+your own `SeriesNamer` to build a different ID.
+
+- Requires engine 1.24.0 or later with a chip manager.
+- A series ID has 1 to 128 characters from `A-Z`, `a-z`, `0-9`, `.`, `_`, `:`,
+  and `-`. An ID outside those rules leaves the chip out of any series and
+  logs a warning. It never fails the create.
+- Each partition of a table must be its own chip partition. Two chips with the
+  same table and partition value in one series replace each other.
+- For several unpartitioned chips of one table, such as one chip per date,
+  call `createChip` with `SeriesRef.of(id, partition)`. The partition names
+  the chip's slot, and the chip itself stays unpartitioned.
+- To check a chip before it joins a series, create it with
+  `SeriesRef.held(id)`, then call `client.publishToSeries(chipId)` when the
+  check passes, or delete the chip when it fails. A deleted held chip leaves
+  the series as it was.
+- A subclass of `DatalatheClient` that overrides
+  `createChip(ChipSource, String, Map)` must also override the four-argument
+  overload, which the resolver calls when a series is set.
+
 #### Freshness tags
 
 Chips are snapshots of their source, so by default the resolver serves a found
