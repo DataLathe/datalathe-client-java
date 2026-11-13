@@ -207,6 +207,9 @@ your own `SeriesNamer` to build a different ID.
   logs a warning. It never fails the create.
 - Each partition of a table must be its own chip partition. Two chips with the
   same table and partition value in one series replace each other.
+- For several unpartitioned chips of one table, such as one chip per date,
+  call `createChip` with `SeriesRef.of(id, partition)`. The partition names
+  the chip's slot, and the chip itself stays unpartitioned.
 - A subclass of `DatalatheClient` that overrides
   `createChip(ChipSource, String, Map)` must also override the four-argument
   overload, which the resolver calls when a series is set.

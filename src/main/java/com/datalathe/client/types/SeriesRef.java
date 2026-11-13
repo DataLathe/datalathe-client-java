@@ -33,7 +33,20 @@ public class SeriesRef {
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private String scope;
 
+    /**
+     * Names the slot for a source that has no partition of its own, so several
+     * unpartitioned chips of one table each keep a slot. The engine refuses it
+     * when the source is partitioned.
+     */
+    @JsonProperty("partition")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String partition;
+
     public static SeriesRef of(String id) {
         return SeriesRef.builder().id(id).build();
+    }
+
+    public static SeriesRef of(String id, String partition) {
+        return SeriesRef.builder().id(id).partition(partition).build();
     }
 }
