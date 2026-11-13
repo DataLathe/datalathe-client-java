@@ -37,6 +37,16 @@ public class DatalatheClient {
      */
     private static final long IDLE_CONNECTION_KEEP_ALIVE_SECONDS = 30;
 
+    /**
+     * Default read timeout for catalog calls: chip search, chip lookup, ingest
+     * job status, connection and license status, and tag writes. The engine
+     * answers these in milliseconds. A call that gets no response in this time
+     * is sent once more, and a second timeout is thrown as
+     * {@link java.net.SocketTimeoutException}. Stagings, reports, and AI
+     * requests keep the five-minute read timeout.
+     */
+    public static final Duration DEFAULT_CATALOG_TIMEOUT = Duration.ofSeconds(5);
+
     /** Header carrying the caller's correlation ID; see {@link #withCorrelationId}. */
     public static final String CORRELATION_ID_HEADER = "X-Correlation-ID";
     private static final Pattern CORRELATION_ID_PATTERN = Pattern.compile("[A-Za-z0-9._:-]{1,128}");
@@ -97,6 +107,22 @@ public class DatalatheClient {
      * @param retryConfig    429 and 503 retry behavior; see {@link RetryConfig}
      */
     public DatalatheClient(String baseUrl, Map<String, String> defaultHeaders, RetryConfig retryConfig) {
+        this(baseUrl, defaultHeaders, retryConfig, DEFAULT_CATALOG_TIMEOUT);
+    }
+
+    /**
+     * Constructs a client with an explicit read timeout for catalog calls.
+     *
+     * @param baseUrl        the datalathe engine base URL (e.g. {@code http://host:3000})
+     * @param defaultHeaders headers to send on every request (may be empty, must not be null)
+     * @param retryConfig    429 and 503 retry behavior; see {@link RetryConfig}
+     * @param catalogTimeout read timeout for catalog calls; see
+     *                       {@link #DEFAULT_CATALOG_TIMEOUT}. {@code null}, zero, or
+     *                       negative leaves them on the five-minute read timeout
+     *                       with no retry.
+     */
+    public DatalatheClient(String baseUrl, Map<String, String> defaultHeaders, RetryConfig retryConfig,
+            Duration catalogTimeout) {
         this.baseUrl = baseUrl;
         this.defaultHeaders = Map.copyOf(defaultHeaders);
 
@@ -118,6 +144,10 @@ public class DatalatheClient {
 
         if (retryConfig != null && retryConfig.isEnabled() && retryConfig.getMaxRetries() > 0) {
             builder.addInterceptor(new RetryInterceptor(retryConfig));
+        }
+
+        if (catalogTimeout != null && !catalogTimeout.isZero() && !catalogTimeout.isNegative()) {
+            builder.addInterceptor(new QuickCallInterceptor(catalogTimeout));
         }
 
         this.client = builder.build();
@@ -676,7 +706,7 @@ public class DatalatheClient {
      * @throws IOException if the API call fails
      */
     public IngestJob getIngestJob(String jobId) throws IOException {
-        return get("/lathe/jobs/" + URLEncoder.encode(jobId, StandardCharsets.UTF_8), IngestJob.class);
+        return getQuick("/lathe/jobs/" + URLEncoder.encode(jobId, StandardCharsets.UTF_8), IngestJob.class);
     }
 
     /**
@@ -852,7 +882,7 @@ public class DatalatheClient {
      * @throws IOException for other API failures.
      */
     public SearchChipsResponse getChip(String chipId) throws IOException {
-        return get("/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8),
+        return getQuick("/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8),
                 SearchChipsResponse.class);
     }
 
@@ -860,7 +890,8 @@ public class DatalatheClient {
      * Gets a database connection by alias (password excluded).
      */
     public ConnectionInfo getConnection(String alias) throws IOException {
-        return get("/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8), ConnectionInfo.class);
+        return getQuick("/lathe/connections/" + URLEncoder.encode(alias, StandardCharsets.UTF_8),
+                ConnectionInfo.class);
     }
 
     // --- License management ---
@@ -869,7 +900,7 @@ public class DatalatheClient {
      * Gets the current license status.
      */
     public LicenseStatus getLicense() throws IOException {
-        return get("/lathe/license", LicenseStatus.class);
+        return getQuick("/lathe/license", LicenseStatus.class);
     }
 
     /**
@@ -922,7 +953,7 @@ public class DatalatheClient {
             url.append("?").append(String.join("&", params));
         }
 
-        Request httpRequest = new Request.Builder()
+        Request httpRequest = QuickCallInterceptor.mark(new Request.Builder())
                 .url(url.toString())
                 .get()
                 .build();
@@ -969,7 +1000,7 @@ public class DatalatheClient {
         Map<String, Object> body = new HashMap<>();
         body.put("tags", tags);
 
-        Request httpRequest = new Request.Builder()
+        Request httpRequest = QuickCallInterceptor.mark(new Request.Builder())
                 .url(baseUrl + "/lathe/chips/" + URLEncoder.encode(chipId, StandardCharsets.UTF_8) + "/tags")
                 .post(RequestBody.create(objectMapper.writeValueAsString(body), JSON))
                 .build();
@@ -1417,7 +1448,15 @@ public class DatalatheClient {
     // --- HTTP helpers ---
 
     private <T> T get(String path, Class<T> responseType) throws IOException {
-        Request httpRequest = new Request.Builder()
+        return get(new Request.Builder(), path, responseType);
+    }
+
+    private <T> T getQuick(String path, Class<T> responseType) throws IOException {
+        return get(QuickCallInterceptor.mark(new Request.Builder()), path, responseType);
+    }
+
+    private <T> T get(Request.Builder builder, String path, Class<T> responseType) throws IOException {
+        Request httpRequest = builder
                 .url(baseUrl + path)
                 .get()
                 .build();

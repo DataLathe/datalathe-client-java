@@ -318,6 +318,20 @@ balancer setting.
 If you terminate the engine behind a proxy with an idle timeout below 30
 seconds, raise the proxy rather than the client.
 
+### Catalog call timeout
+
+Chip search, chip lookup, ingest job status, connection and license status, and tag writes have a
+5-second read timeout. The engine answers them in milliseconds, so a call with no response in that
+time is sent once more. A second timeout throws `SocketTimeoutException`. Stagings, reports, chip
+queries, deletes, and AI requests keep the 5-minute read timeout and aren't repeated.
+
+To change the timeout, pass it to the constructor. `null` turns the short timeout and the retry off:
+
+```java
+DatalatheClient client = new DatalatheClient(
+    baseUrl, Collections.emptyMap(), RetryConfig.DEFAULT, Duration.ofSeconds(10));
+```
+
 ### Error Handling
 
 Failed API calls throw `IOException`. When the engine returns a structured
