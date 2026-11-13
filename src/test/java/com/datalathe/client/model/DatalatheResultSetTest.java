@@ -438,4 +438,52 @@ class DatalatheResultSetTest {
 
         emptyResultSet.close();
     }
+
+    @Test
+    void testNonFiniteFloatingPointValues() throws SQLException {
+        Schema doubleCol = new Schema();
+        doubleCol.setName("ratio");
+        doubleCol.setDataType("Float64");
+        Schema floatCol = new Schema();
+        floatCol.setName("ratio32");
+        floatCol.setDataType("Float32");
+
+        List<List<String>> rows = new ArrayList<>();
+        for (String v : List.of("inf", "-inf", "NaN", "nan", "Infinity", "-Infinity", "2.5")) {
+            rows.add(List.of(v, v));
+        }
+        Result result = new Result();
+        result.setResult(rows);
+        result.setSchema(List.of(doubleCol, floatCol));
+        DatalatheResultSet rs = new DatalatheResultSet(result);
+
+        double[] doubles = {
+            Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, Double.NaN, Double.NaN,
+            Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY, 2.5
+        };
+        for (double expected : doubles) {
+            assertTrue(rs.next());
+            assertEquals(expected, rs.getDouble(1));
+            assertEquals(expected, rs.getDouble("ratio"));
+            assertEquals((float) expected, rs.getFloat(2));
+            assertEquals(expected, rs.getObject(1));
+            assertEquals((float) expected, rs.getObject(2));
+            assertFalse(rs.wasNull());
+        }
+        assertFalse(rs.next());
+    }
+
+    @Test
+    void testUnparseableDoubleStillFails() throws SQLException {
+        Schema col = new Schema();
+        col.setName("v");
+        col.setDataType("Float64");
+        Result result = new Result();
+        result.setResult(List.of(List.of("infinite")));
+        result.setSchema(List.of(col));
+        DatalatheResultSet rs = new DatalatheResultSet(result);
+
+        assertTrue(rs.next());
+        assertThrows(NumberFormatException.class, () -> rs.getDouble(1));
+    }
 }

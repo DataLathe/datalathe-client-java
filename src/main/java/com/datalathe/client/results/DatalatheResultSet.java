@@ -46,7 +46,7 @@ public class DatalatheResultSet extends AbstractResultSet {
         wasNull = value == null;
         if (value == null) return false;
         try {
-            return Double.parseDouble(value) != 0;
+            return NonFiniteNumbers.parseDouble(value) != 0;
         } catch (NumberFormatException e) {
             return Boolean.parseBoolean(value);
         }
@@ -90,14 +90,14 @@ public class DatalatheResultSet extends AbstractResultSet {
     public float getFloat(int columnIndex) throws SQLException {
         String value = getValue(columnIndex);
         wasNull = value == null;
-        return value == null ? 0.0f : Float.parseFloat(value);
+        return value == null ? 0.0f : NonFiniteNumbers.parseFloat(value);
     }
 
     @Override
     public double getDouble(int columnIndex) throws SQLException {
         String value = getValue(columnIndex);
         wasNull = value == null;
-        return value == null ? 0.0 : Double.parseDouble(value);
+        return value == null ? 0.0 : NonFiniteNumbers.parseDouble(value);
     }
 
     @Override
@@ -276,9 +276,9 @@ public class DatalatheResultSet extends AbstractResultSet {
                 case "Int64":
                     return Long.parseLong(value);
                 case "Float32":
-                    return Float.parseFloat(value);
+                    return NonFiniteNumbers.parseFloat(value);
                 case "Float64":
-                    return Double.parseDouble(value);
+                    return NonFiniteNumbers.parseDouble(value);
                 case "Boolean":
                     return Boolean.parseBoolean(value);
                 default:
