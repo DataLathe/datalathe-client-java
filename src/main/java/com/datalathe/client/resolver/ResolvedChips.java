@@ -15,10 +15,17 @@ public class ResolvedChips {
 
     private final List<String> unpartitionedChipIds;
     private final List<String> partitionedChipIds;
+    private final ResolveStats stats;
 
     public ResolvedChips(List<String> unpartitionedChipIds, List<String> partitionedChipIds) {
+        this(unpartitionedChipIds, partitionedChipIds, ResolveStats.NONE);
+    }
+
+    ResolvedChips(List<String> unpartitionedChipIds, List<String> partitionedChipIds,
+                  ResolveStats stats) {
         this.unpartitionedChipIds = Collections.unmodifiableList(unpartitionedChipIds);
         this.partitionedChipIds = Collections.unmodifiableList(partitionedChipIds);
+        this.stats = stats;
     }
 
     /** Chip IDs for unpartitioned tables (one chip per table, reused across partitions). */
@@ -34,6 +41,16 @@ public class ResolvedChips {
     /** All chip IDs — pass this to {@code generateReport()}. */
     public List<String> allChipIds() {
         return Stream.concat(unpartitionedChipIds.stream(), partitionedChipIds.stream()).toList();
+    }
+
+    /**
+     * What the resolve call did to produce these chips: chips found, created,
+     * awaited and evicted, and the time spent on the search, on creates and on
+     * waiting. {@link ResolveStats#NONE} for an instance built with the public
+     * constructor.
+     */
+    public ResolveStats stats() {
+        return stats;
     }
 
     /** Total number of resolved chips. */

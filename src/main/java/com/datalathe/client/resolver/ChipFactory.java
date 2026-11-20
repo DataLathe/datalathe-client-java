@@ -124,4 +124,31 @@ public interface ChipFactory {
     default Map<String, String> freshnessTags(String table, String partitionValue) {
         return freshnessTags(table);
     }
+
+    /**
+     * Additional tags for the chip the resolver creates for the table, or
+     * null/empty for none.
+     *
+     * <p>The {@link ChipResolver} sends these tags in the create request,
+     * alongside the tenant tag and any {@link #freshnessTags freshness tags},
+     * so the chip carries them from the moment it exists and no follow-up tag
+     * call is needed. Unlike freshness tags, the resolver never compares them:
+     * a chip whose additional tags are missing or different stays in use.</p>
+     *
+     * <p>The tags apply at create only. A chip that a search finds keeps the
+     * tags it has, and when concurrent resolves share one create, the chip
+     * carries the tags of the resolve that started it.</p>
+     *
+     * <p>Called on every resolve, once per table (unpartitioned) or once per
+     * table/partition pair (partitioned), so return precomputed values. A key
+     * that equals the tenant tag key or one of the chip's freshness tag keys
+     * fails the resolve with an {@link IllegalArgumentException}.</p>
+     *
+     * @param table          the table name
+     * @param partitionValue the partition value, or null for unpartitioned tables
+     * @return tag entries to set at create, or null/empty for none
+     */
+    default Map<String, String> additionalTags(String table, String partitionValue) {
+        return null;
+    }
 }

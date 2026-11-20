@@ -153,7 +153,8 @@ client.generateReport(chips.allChipIds(), List.of("SELECT month, sum(total) FROM
 
 `ResolvedChips` splits the results into `unpartitionedChipIds()` and
 `partitionedChipIds()`; `allChipIds()` concatenates both and `size()` returns
-the total count.
+the total count. `stats()` reports what the call did; see
+[Resolve statistics](#resolve-statistics).
 
 Resolution is incremental: the first run for a 13-month trend report creates all
 chips, subsequent runs find them via search and create nothing, and when the
@@ -265,11 +266,124 @@ don't query a database or compute anything expensive there. Dynamic values
 constructor, computed once per request. Two caveats: a chip for the table
 created by any other writer without these tags is treated as stale and
 deleted, and eviction is at-least-once — a concurrent resolver may briefly
-see a chip disappear mid-report and self-heal on its next resolve. When two
-resolvers race to evict the same chip, the loser's delete may fail; the
-resolver then looks the chip up and, if it is gone, proceeds to recreate
-rather than attaching a chip that no longer exists (engines before 1.16.0
-answer such a delete with a 500 instead of a 404).
+see a chip disappear mid-report and self-heal on its next resolve.
+
+One resolver, including its `withCorrelationId` and `withSeries` views, runs
+one eviction per chip at a time. A resolve that finds a chip stale while
+another resolve is evicting it waits for that eviction and uses its outcome:
+when the chip is gone, the resolve creates the replacement or waits for the
+create in flight, and when the chip was kept, the resolve keeps it too. The
+resolver sends one `DELETE` for the chip, and no resolve returns a chip that
+the resolver has evicted or is evicting.
+
+Two resolver instances, such as two app servers, can still delete the same
+chip at once, and the engine can answer the losing delete with a `500`. When
+a delete fails with anything other than a `404`, the resolver looks the chip
+up. If the chip is gone, the resolve creates the replacement. If the chip is
+still listed, or the lookup fails, the resolver looks again after 50, 100,
+200, and 400 ms, because the other delete can still be in flight. A chip
+that the last lookup still lists, or can't check, stays in use for that
+resolve: the resolver doesn't create a replacement next to a stale chip
+that it can't delete. A `404` on the delete means that the chip is already gone, and
+the resolve creates the replacement at once.
+
+#### Shared chip search
+
+Resolves on one resolver that overlap in time and use the same tag key and
+value share one chip search. An app that renders several report elements at
+once, each with its own resolve, sends one search for the page instead of one
+per element. You don't configure anything, and the views that
+`withCorrelationId` and `withSeries` return share searches with the resolver
+they came from.
+
+A resolve joins a search that is in flight only when this resolver has not
+created or evicted a chip for the tag since that search started. Otherwise it
+sends a new search. The resolver keeps no search result after the search
+returns, so a resolve that starts later sends its own search.
+
+The following rules keep a shared search from changing what a resolve returns:
+
+- A resolve always sees the chips that this resolver created. The resolver
+  keeps a finished create until a search lists the chip and no resolve still
+  holds a search that started before the create finished.
+- A resolve doesn't return a chip that this resolver evicted or is evicting,
+  even when its search still lists the chip. The resolve checks each chip
+  when it reaches the chip in the search result, so an eviction that starts
+  or finishes after the search returned is covered. The same check applies
+  to a chip that the resolve takes from a finished create.
+- When a shared search fails, each resolve that joined it sends one search of
+  its own. Only the resolve that sent the failed search gets the error.
+- A chip that another server registers is visible to the next search, as
+  before. The result a resolve acts on is at most one search round trip old,
+  which is the same bound as a search of its own. The difference is the
+  window between the start of a search and the start of a resolve that joins
+  it: the resolve can miss a chip that another server registered in that
+  window, and can get a chip that another server deleted in it.
+
+A shared search carries the correlation ID of the resolve that sent it.
+
+#### Resolve statistics
+
+`ResolvedChips.stats()` returns a `ResolveStats` for the call that produced
+the chips, including calls on a `withCorrelationId` or `withSeries` view:
+
+```java
+ResolvedChips chips = resolver.withCorrelationId(runId)
+    .resolveForTables(tables, partitionValues, "tenant", "42", factory);
+
+ResolveStats stats = chips.stats();
+log.info("resolve found={} created={} awaited={} evicted={} searchMs={} createMs={} waitMs={} totalMs={}",
+    stats.chipsFound(), stats.chipsCreated(), stats.chipsAwaited(), stats.chipsEvicted(),
+    stats.searchMillis(), stats.createMillis(), stats.waitMillis(), stats.totalMillis());
+```
+
+The following table describes each value:
+
+| Method | Value |
+|---|---|
+| `chipsFound()` | Chips that the search found. |
+| `chipsCreated()` | Chips that this call created. A create that returned no chip isn't counted. |
+| `chipsAwaited()` | Chips that this call took from a create that another call started, whether that create was still running or had finished. |
+| `chipsEvicted()` | Stale chips that this call deleted, or found already deleted, before it replaced them. A call that waited while another call evicted a chip doesn't count that chip. |
+| `searchShared()` | `true` when this call used a search that another call sent. |
+| `searchMillis()` | Time this call waited for the chip search, its own or a shared one. |
+| `createMillis()` | Time spent in the creates that this call started, summed over the creates. Creates run in parallel, so the sum can exceed `totalMillis()`. |
+| `waitMillis()` | Wall-clock time this call waited for creates and evictions that other calls started. |
+| `totalMillis()` | Wall-clock time of the resolve, after table extraction. |
+
+A `ResolvedChips` that you build with its public constructor returns
+`ResolveStats.NONE`, which holds zeros.
+
+#### Additional tags at create
+
+To put tags of your own on the chips the resolver creates, override
+`additionalTags(String table, String partitionValue)` on your `ChipFactory`.
+The resolver sends them in the create request with the tenant tag and any
+freshness tags, so no follow-up `addChipTags` call is needed:
+
+```java
+ChipFactory factory = new ChipFactory() {
+    // isPartitioned / buildSource as above...
+
+    @Override
+    public Map<String, String> additionalTags(String table, String partitionValue) {
+        return Map.of("region", region);
+    }
+};
+```
+
+- The resolver never compares additional tags. A chip whose additional tags
+  are missing or different stays in use. To rebuild a chip when a value
+  changes, use a freshness tag.
+- The tags apply at create only. A chip that a search finds keeps the tags it
+  has, so chips that predate the override need a one-time `addChipTags` call
+  if you want the tags on them.
+- When concurrent resolves share one create, the chip carries the tags of the
+  resolve that started the create.
+- A key that equals the tenant tag key or one of the chip's freshness tag keys
+  fails the resolve with an `IllegalArgumentException`.
+- The method runs on every resolve, once per table or table and partition
+  pair, so return precomputed values.
 
 ### Correlation IDs
 
@@ -290,12 +404,13 @@ and never throws. `IngestJob.getCorrelationId()` and chip metadata return the
 stored ID.
 
 `ChipResolver.withCorrelationId` returns a view on the same resolver: it
-shares the executor, the in-flight creates and the empty-source cache, so
-concurrent requests still stage each chip once. Don't build a second
+shares the executor, the in-flight creates, the in-flight chip searches and
+the empty-source cache, so concurrent requests still stage each chip once. Don't build a second
 `ChipResolver` per request for this; separate resolvers don't see each
 other's in-flight creates. When two requests race for the same chip, the
 chip carries the ID of the request that started the create, and
-`searchChips` by the other ID won't list it.
+`searchChips` by the other ID won't list it. A shared chip search carries the
+ID of the request that sent it.
 
 A subclass of `DatalatheClient` that overrides request methods must also
 override `copyWith(OkHttpClient)` and return itself through the protected
