@@ -1,6 +1,7 @@
 package com.datalathe.client.resolver;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.datalathe.client.DatalatheClient;
@@ -10,6 +11,7 @@ import com.datalathe.client.types.SourceType;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,8 +28,8 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 
 /**
  * The resolver against a live engine: a create carries the tenant tag and the
- * factory's additional tags, the next resolve finds the chip, and concurrent
- * resolves agree on it. Run via {@code dagger call integration-java} or
+ * factory's additional tags, the next resolve finds the chip, concurrent
+ * resolves agree on it, and concurrent resolves replace a stale chip once. Run via {@code dagger call integration-java} or
  * {@code mvn test -Pintegration} with DATALATHE_URL set.
  */
 @Tag("integration")
@@ -48,8 +50,12 @@ class ChipResolverIntegrationTest {
     void setUp() {
         client = new DatalatheClient(System.getenv("DATALATHE_URL"));
         callers = Executors.newFixedThreadPool(6);
+        factory = factory(null);
+    }
+
+    private static ChipFactory factory(String version) {
         String csvPath = System.getenv().getOrDefault("E2E_CSV_PATH", "/tmp/test-data.csv");
-        factory = new ChipFactory() {
+        return new ChipFactory() {
             @Override
             public boolean isPartitioned(String table) {
                 return false;
@@ -69,6 +75,11 @@ class ChipResolverIntegrationTest {
             @Override
             public Map<String, String> additionalTags(String table, String partitionValue) {
                 return Map.of("int_java_owner", "reports");
+            }
+
+            @Override
+            public Map<String, String> freshnessTags(String table) {
+                return version == null ? null : Map.of("int_java_version", version);
             }
         };
     }
@@ -126,5 +137,44 @@ class ChipResolverIntegrationTest {
             assertEquals(0, chips.stats().chipsCreated());
             assertTrue(chips.stats().searchMillis() >= 0);
         }
+    }
+
+    @Test
+    void concurrentResolvesReplaceAStaleChipOnce() throws Exception {
+        String staleTagValue = tagValue + "-stale";
+        String oldChipId = new ChipResolver(client)
+                .resolveForTables(Set.of(TABLE_NAME), List.of(), TAG_KEY, staleTagValue, factory("v1"))
+                .allChipIds().get(0);
+        createdChipIds.add(oldChipId);
+
+        ChipResolver resolver = new ChipResolver(client);
+        ChipFactory current = factory("v2");
+        List<Future<ResolvedChips>> concurrent = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            ChipResolver view = resolver.withCorrelationId("int-java-evict-" + i);
+            concurrent.add(callers.submit(() -> view.resolveForTables(
+                    Set.of(TABLE_NAME), List.of(), TAG_KEY, staleTagValue, current)));
+        }
+        Set<String> returned = new HashSet<>();
+        int evicted = 0;
+        int created = 0;
+        for (Future<ResolvedChips> result : concurrent) {
+            ResolvedChips chips = result.get(60, TimeUnit.SECONDS);
+            returned.addAll(chips.allChipIds());
+            evicted += chips.stats().chipsEvicted();
+            created += chips.stats().chipsCreated();
+        }
+        createdChipIds.addAll(returned);
+
+        Set<String> listed = new HashSet<>();
+        for (SearchChipsResponse.ChipRecord chip
+                : client.searchChips(null, null, TAG_KEY, staleTagValue).getChips()) {
+            listed.add(chip.getChipId());
+        }
+        assertEquals(1, returned.size(), returned.toString());
+        assertFalse(returned.contains(oldChipId));
+        assertEquals(listed, returned);
+        assertEquals(1, evicted);
+        assertEquals(1, created);
     }
 }

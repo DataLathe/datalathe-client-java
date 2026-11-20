@@ -204,13 +204,34 @@ class ChipResolverFreshnessTest {
         enqueueSearch(chip("c1", "users", null),
                 tag("c1", "tenant", "42") + "," + tag("c1", "schema_version", "v1"));
         enqueueJson(500, "{\"error_code\":\"INTERNAL\",\"message\":\"boom\"}");
-        enqueueSearch(chip("c1", "users", null), tag("c1", "tenant", "42"));
+        for (int lookup = 0; lookup < 3; lookup++) {
+            enqueueSearch(chip("c1", "users", null), tag("c1", "tenant", "42"));
+        }
+        resolver.evictRecheckDelaysMillis = new long[] {1, 1};
 
         ResolvedChips resolved = resolver.resolveForTables(Set.of("users"), List.of(),
                 "tenant", "42", factory(false, Map.of("schema_version", "v2")));
 
         assertEquals(List.of("c1"), resolved.allChipIds());
-        assertEquals(3, server.getRequestCount());
+        assertEquals(5, server.getRequestCount());
+    }
+
+    @Test
+    void deleteFailureWithChipGoneOnALaterLookupRecreates() throws Exception {
+        enqueueSearch(chip("c1", "users", null),
+                tag("c1", "tenant", "42") + "," + tag("c1", "schema_version", "v1"));
+        enqueueJson(500, "{\"error_code\":\"INTERNAL\",\"message\":\"boom\"}");
+        enqueueSearch(chip("c1", "users", null), tag("c1", "tenant", "42"));
+        enqueueJson(503, "{\"error_code\":\"UNAVAILABLE\",\"message\":\"down\"}");
+        enqueueJson(404, "{\"error_code\":\"chip_not_found\",\"chip_id\":\"c1\",\"error\":\"gone\"}");
+        enqueueJson(200, "{\"chip_id\":\"c2\"}");
+        resolver.evictRecheckDelaysMillis = new long[] {1, 1};
+
+        ResolvedChips resolved = resolver.resolveForTables(Set.of("users"), List.of(),
+                "tenant", "42", factory(false, Map.of("schema_version", "v2")));
+
+        assertEquals(List.of("c2"), resolved.allChipIds());
+        assertEquals(6, server.getRequestCount());
     }
 
     @Test
@@ -235,12 +256,14 @@ class ChipResolverFreshnessTest {
                 tag("c1", "tenant", "42") + "," + tag("c1", "schema_version", "v1"));
         enqueueJson(500, "{\"error_code\":\"INTERNAL\",\"message\":\"boom\"}");
         enqueueJson(503, "{\"error_code\":\"UNAVAILABLE\",\"message\":\"down\"}");
+        enqueueJson(503, "{\"error_code\":\"UNAVAILABLE\",\"message\":\"down\"}");
+        resolver.evictRecheckDelaysMillis = new long[] {1};
 
         ResolvedChips resolved = resolver.resolveForTables(Set.of("users"), List.of(),
                 "tenant", "42", factory(false, Map.of("schema_version", "v2")));
 
         assertEquals(List.of("c1"), resolved.allChipIds());
-        assertEquals(3, server.getRequestCount());
+        assertEquals(4, server.getRequestCount());
     }
 
     @Test

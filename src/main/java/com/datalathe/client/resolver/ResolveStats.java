@@ -57,7 +57,11 @@ public final class ResolveStats {
         return chipsAwaited;
     }
 
-    /** Stale chips that this call deleted, or found already deleted, before replacing them. */
+    /**
+     * Stale chips that this call deleted, or found already deleted, before
+     * replacing them. A call that waited while another call on the same
+     * resolver evicted a chip doesn't count that chip.
+     */
     public int chipsEvicted() {
         return chipsEvicted;
     }
@@ -85,10 +89,11 @@ public final class ResolveStats {
     }
 
     /**
-     * Wall-clock milliseconds this call waited for creates that other calls
-     * started, measured from the moment it began waiting until the last of
-     * them finished. Zero when {@link #chipsAwaited()} creates had all
-     * finished already.
+     * Wall-clock milliseconds this call waited for creates and evictions that
+     * other calls started. The wait for creates runs from the moment the call
+     * began waiting until the last of them finished, and is zero when the
+     * {@link #chipsAwaited()} creates had all finished already. The wait for
+     * each eviction of a stale chip that another call was running is added.
      */
     public long waitMillis() {
         return waitMillis;

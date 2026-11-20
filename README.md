@@ -266,11 +266,26 @@ don't query a database or compute anything expensive there. Dynamic values
 constructor, computed once per request. Two caveats: a chip for the table
 created by any other writer without these tags is treated as stale and
 deleted, and eviction is at-least-once — a concurrent resolver may briefly
-see a chip disappear mid-report and self-heal on its next resolve. When two
-resolvers race to evict the same chip, the loser's delete may fail; the
-resolver then looks the chip up and, if it is gone, proceeds to recreate
-rather than attaching a chip that no longer exists (engines before 1.16.0
-answer such a delete with a 500 instead of a 404).
+see a chip disappear mid-report and self-heal on its next resolve.
+
+One resolver, including its `withCorrelationId` and `withSeries` views, runs
+one eviction per chip at a time. A resolve that finds a chip stale while
+another resolve is evicting it waits for that eviction and uses its outcome:
+when the chip is gone, the resolve creates the replacement or waits for the
+create in flight, and when the chip was kept, the resolve keeps it too. The
+resolver sends one `DELETE` for the chip, and no resolve returns a chip that
+the resolver has evicted or is evicting.
+
+Two resolver instances, such as two app servers, can still delete the same
+chip at once, and the engine can answer the losing delete with a `500`. When
+a delete fails with anything other than a `404`, the resolver looks the chip
+up. If the chip is gone, the resolve creates the replacement. If the chip is
+still listed, or the lookup fails, the resolver looks again after 50, 100,
+200, and 400 ms, because the other delete can still be in flight. A chip
+that the last lookup still lists, or can't check, stays in use for that
+resolve: the resolver doesn't create a replacement next to a stale chip
+that it can't delete. A `404` on the delete means that the chip is already gone, and
+the resolve creates the replacement at once.
 
 #### Shared chip search
 
@@ -291,8 +306,11 @@ The following rules keep a shared search from changing what a resolve returns:
 - A resolve always sees the chips that this resolver created. The resolver
   keeps a finished create until a search lists the chip and no resolve still
   holds a search that started before the create finished.
-- A resolve doesn't return a chip that this resolver evicted, even when its
-  search started before the eviction and still lists the chip.
+- A resolve doesn't return a chip that this resolver evicted or is evicting,
+  even when its search still lists the chip. The resolve checks each chip
+  when it reaches the chip in the search result, so an eviction that starts
+  or finishes after the search returned is covered. The same check applies
+  to a chip that the resolve takes from a finished create.
 - When a shared search fails, each resolve that joined it sends one search of
   its own. Only the resolve that sent the failed search gets the error.
 - A chip that another server registers is visible to the next search, as
@@ -326,11 +344,11 @@ The following table describes each value:
 | `chipsFound()` | Chips that the search found. |
 | `chipsCreated()` | Chips that this call created. A create that returned no chip isn't counted. |
 | `chipsAwaited()` | Chips that this call took from a create that another call started, whether that create was still running or had finished. |
-| `chipsEvicted()` | Stale chips that this call deleted, or found already deleted, before it replaced them. |
+| `chipsEvicted()` | Stale chips that this call deleted, or found already deleted, before it replaced them. A call that waited while another call evicted a chip doesn't count that chip. |
 | `searchShared()` | `true` when this call used a search that another call sent. |
 | `searchMillis()` | Time this call waited for the chip search, its own or a shared one. |
 | `createMillis()` | Time spent in the creates that this call started, summed over the creates. Creates run in parallel, so the sum can exceed `totalMillis()`. |
-| `waitMillis()` | Wall-clock time this call waited for creates that other calls started. |
+| `waitMillis()` | Wall-clock time this call waited for creates and evictions that other calls started. |
 | `totalMillis()` | Wall-clock time of the resolve, after table extraction. |
 
 A `ResolvedChips` that you build with its public constructor returns

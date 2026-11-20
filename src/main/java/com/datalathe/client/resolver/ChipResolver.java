@@ -75,7 +75,8 @@ import java.util.regex.Pattern;
  * <h3>Statistics</h3>
  * <p>{@link ResolvedChips#stats()} reports what each resolve call did: chips
  * found, created, awaited and evicted, and the time spent on the search, on
- * creates and on waiting for creates that other calls started.</p>
+ * creates and on waiting for creates and evictions that other calls
+ * started.</p>
  *
  * <h3>Freshness</h3>
  * <p>Chips are snapshots of their source; by default the resolver serves a found
@@ -87,6 +88,16 @@ import java.util.regex.Pattern;
  * eviction. Semantics, convergence guarantee, and caveats (other writers'
  * untagged chips, partitioned-table mass re-stage, at-least-once eviction under
  * concurrent resolvers) are documented on {@link ChipFactory#freshnessTags}.</p>
+ *
+ * <p>This resolver and its {@link #withCorrelationId} and {@link #withSeries}
+ * views run one eviction per chip at a time. A resolve that finds a chip
+ * stale while another resolve is evicting it waits for that eviction and uses
+ * its outcome, so the resolver sends one delete for the chip and no resolve
+ * returns a chip that the resolver has evicted or is evicting. When a delete
+ * fails with anything other than a 404, the resolver looks the chip up, and
+ * looks again after delays that total 750 ms: a chip that is gone is
+ * replaced, and a chip that the last lookup still lists or can't check
+ * stays in use for the resolve.</p>
  */
 public class ChipResolver {
 
@@ -101,11 +112,13 @@ public class ChipResolver {
     private final long timeoutMinutes;
     private final long emptyRecheckMinutes;
     private final ConcurrentHashMap<String, Creation> inflight;
+    private final ConcurrentHashMap<String, CompletableFuture<Boolean>> evictions;
     private final SearchCoordinator searches;
     private final ConcurrentHashMap<String, Long> emptySince;
     private final SeriesNamer seriesNamer;
 
     LongSupplier clock = System::currentTimeMillis;
+    long[] evictRecheckDelaysMillis = {50, 100, 200, 400};
 
     public ChipResolver(DatalatheClient client) {
         this(client, Executors.newFixedThreadPool(
@@ -133,6 +146,7 @@ public class ChipResolver {
         this.timeoutMinutes = timeoutMinutes;
         this.emptyRecheckMinutes = emptyRecheckMinutes;
         this.inflight = new ConcurrentHashMap<>();
+        this.evictions = new ConcurrentHashMap<>();
         this.searches = new SearchCoordinator();
         this.emptySince = new ConcurrentHashMap<>();
         this.seriesNamer = null;
@@ -149,15 +163,18 @@ public class ChipResolver {
         this.timeoutMinutes = base.timeoutMinutes;
         this.emptyRecheckMinutes = base.emptyRecheckMinutes;
         this.inflight = base.inflight;
+        this.evictions = base.evictions;
         this.searches = base.searches;
         this.emptySince = base.emptySince;
         this.clock = base.clock;
+        this.evictRecheckDelaysMillis = base.evictRecheckDelaysMillis;
     }
 
     /**
      * Returns a resolver whose requests carry {@code correlationId} (see
      * {@link DatalatheClient#withCorrelationId}) and that shares this resolver's
-     * executor, in-flight creates, in-flight searches and empty-source cache.
+     * executor, in-flight creates, in-flight evictions, in-flight searches and
+     * empty-source cache.
      * Use it instead of a second {@code ChipResolver}: two resolvers built from
      * the same client do not see each other's in-flight creates and stage the
      * same chip twice.
@@ -175,8 +192,8 @@ public class ChipResolver {
     /**
      * Returns a resolver that publishes every chip it creates into the series
      * that {@code namer} returns for the chip's isolation tag, and that shares
-     * this resolver's executor, in-flight creates, in-flight searches and
-     * empty-source cache.
+     * this resolver's executor, in-flight creates, in-flight evictions,
+     * in-flight searches and empty-source cache.
      *
      * <p>A series holds one current chip per table and partition, so
      * {@code series:<id>@latest} reads the tag's whole data set and the series
@@ -313,27 +330,23 @@ public class ChipResolver {
         List<String> existingPartitionedIds = new ArrayList<>();
         List<Pending> unpartitionedPending = new ArrayList<>();
         List<Pending> partitionedPending = new ArrayList<>();
-        int evicted = 0;
-
         long searchStart = System.nanoTime();
         SearchTicket ticket = search(tag, tagKey, tagValue);
         long searchNanos = System.nanoTime() - searchStart;
+        Walk walk = new Walk(tag, ticket.search);
         try {
             SearchChipsResponse existing = ticket.response;
-            Set<String> hiddenChipIds = searches.evictedSince(tag, ticket.search);
 
             // Index existing chips by table and (table|pv)
             Set<String> existingUnpartitionedTables = new HashSet<>();
             Set<String> existingPartitionedKeys = new HashSet<>();
 
-            Map<String, Map<String, String>> tagsByChip = new HashMap<>();
             if (existing.getTags() != null) {
                 for (var chipTag : existing.getTags()) {
-                    tagsByChip.computeIfAbsent(chipTag.getChipId(), k -> new HashMap<>())
+                    walk.tagsByChip.computeIfAbsent(chipTag.getChipId(), k -> new HashMap<>())
                             .put(chipTag.getKey(), chipTag.getValue());
                 }
             }
-            Set<String> evictedChipIds = new HashSet<>();
 
             if (existing.getChips() != null) {
                 for (var chip : existing.getChips()) {
@@ -342,17 +355,8 @@ public class ChipResolver {
 
                     if (unpartitionedTables.contains(table)
                             && chipId.equals(chip.getSubChipId())) {
-                        if (hiddenChipIds.contains(chipId)) {
-                            continue;
-                        }
                         String key = keyPrefix + table + "|" + null;
-                        boolean alreadyEvicted = evictedChipIds.contains(chipId);
-                        if (evictIfStale(chip, freshnessByKey.get(table + "|" + null),
-                                tagsByChip, evictedChipIds)) {
-                            if (!alreadyEvicted) {
-                                noteEviction(tag, key, chipId);
-                                evicted++;
-                            }
+                        if (!usable(walk, chip, key, freshnessByKey.get(table + "|" + null))) {
                             continue;
                         }
                         if (existingUnpartitionedTables.add(table)) {
@@ -361,17 +365,9 @@ public class ChipResolver {
                         }
                     } else if (partitionedTables.contains(table)
                             && pvSet.contains(chip.getPartitionValue())) {
-                        if (hiddenChipIds.contains(chipId)) {
-                            continue;
-                        }
                         String key = keyPrefix + table + "|" + chip.getPartitionValue();
-                        boolean alreadyEvicted = evictedChipIds.contains(chipId);
-                        if (evictIfStale(chip, freshnessByKey.get(table + "|" + chip.getPartitionValue()),
-                                tagsByChip, evictedChipIds)) {
-                            if (!alreadyEvicted) {
-                                noteEviction(tag, key, chipId);
-                                evicted++;
-                            }
+                        if (!usable(walk, chip, key,
+                                freshnessByKey.get(table + "|" + chip.getPartitionValue()))) {
                             continue;
                         }
                         if (existingPartitionedKeys.add(table + "|" + chip.getPartitionValue())) {
@@ -385,7 +381,7 @@ public class ChipResolver {
             // Create missing chips in parallel with dedup gate
             for (String table : unpartitionedTables) {
                 if (!existingUnpartitionedTables.contains(table)) {
-                    unpartitionedPending.add(getOrCreate(table, null, tagKey, tagValue, factory,
+                    unpartitionedPending.add(getOrCreate(walk, table, null, tagKey, tagValue, factory,
                             freshnessByKey.get(table + "|" + null),
                             additionalByKey.get(table + "|" + null)));
                 }
@@ -393,7 +389,7 @@ public class ChipResolver {
             for (String pv : pvSet) {
                 for (String table : partitionedTables) {
                     if (!existingPartitionedKeys.contains(table + "|" + pv)) {
-                        partitionedPending.add(getOrCreate(table, pv, tagKey, tagValue, factory,
+                        partitionedPending.add(getOrCreate(walk, table, pv, tagKey, tagValue, factory,
                                 freshnessByKey.get(table + "|" + pv),
                                 additionalByKey.get(table + "|" + pv)));
                     }
@@ -414,8 +410,8 @@ public class ChipResolver {
         }
         if (pending.isEmpty()) {
             return new ResolvedChips(existingUnpartitionedIds, existingPartitionedIds,
-                    new ResolveStats(found, 0, 0, evicted, ticket.shared, millis(searchNanos), 0, 0,
-                            millis(System.nanoTime() - startNanos)));
+                    new ResolveStats(found, 0, 0, walk.evicted, ticket.shared, millis(searchNanos), 0,
+                            millis(walk.evictionWaitNanos), millis(System.nanoTime() - startNanos)));
         }
 
         long waitStart = System.nanoTime();
@@ -447,10 +443,11 @@ public class ChipResolver {
             }
             (p.partitioned ? partitionedIds : unpartitionedIds).add(id);
         }
-        long waitNanos = awaited == 0 ? 0 : Math.max(0, awaitedDone.join() - waitStart);
+        long waitNanos = walk.evictionWaitNanos
+                + (awaited == 0 ? 0 : Math.max(0, awaitedDone.join() - waitStart));
 
         return new ResolvedChips(unpartitionedIds, partitionedIds,
-                new ResolveStats(found, created, awaited, evicted, ticket.shared, millis(searchNanos),
+                new ResolveStats(found, created, awaited, walk.evicted, ticket.shared, millis(searchNanos),
                         millis(createNanos), millis(waitNanos), millis(System.nanoTime() - startNanos)));
     }
 
@@ -546,7 +543,7 @@ public class ChipResolver {
      * is still remembered. If creation is already in-flight for the same key,
      * returns the existing one instead of starting a second.
      */
-    private Pending getOrCreate(String table, String partitionValue,
+    private Pending getOrCreate(Walk walk, String table, String partitionValue,
                                 String tagKey, String tagValue,
                                 ChipFactory factory,
                                 Map<String, String> freshnessTags,
@@ -571,116 +568,198 @@ public class ChipResolver {
         SeriesRef series = seriesFor(tagKey, tagValue);
 
         AtomicBoolean started = new AtomicBoolean();
-        Creation creation = inflight.computeIfAbsent(key, k -> {
-            started.set(true);
-            log.info("Creating chip for table={} partition={}", table, partitionValue);
+        Creation creation;
+        do {
+            creation = inflight.computeIfAbsent(key, k -> {
+                started.set(true);
+                log.info("Creating chip for table={} partition={}", table, partitionValue);
 
-            Creation c = new Creation();
-            c.future = CompletableFuture
-                    .supplyAsync(() -> {
-                        long createStart = System.nanoTime();
-                        try {
-                            ChipSource source;
+                Creation c = new Creation();
+                c.future = CompletableFuture
+                        .supplyAsync(() -> {
+                            long createStart = System.nanoTime();
                             try {
-                                source = factory.buildSource(table, partitionValue);
-                            } catch (RuntimeException e) {
-                                throw contextualize("ChipFactory.buildSource", table, partitionValue, e);
-                            }
-                            logBuiltSource(table, partitionValue, source);
-                            try {
-                                String id = series == null
-                                        ? client.createChip(source, null, tags)
-                                        : client.createChip(source, null, tags, series);
-                                emptySince.remove(key);
-                                if (id != null) {
-                                    c.completedSequence = searches.changed(tag);
+                                ChipSource source;
+                                try {
+                                    source = factory.buildSource(table, partitionValue);
+                                } catch (RuntimeException e) {
+                                    throw contextualize("ChipFactory.buildSource", table, partitionValue, e);
                                 }
-                                return id;
-                            } catch (IOException e) {
-                                handleCreateFailure(key, table, partitionValue, e);
-                                return null;
-                            } catch (RuntimeException e) {
-                                throw contextualize("createChip", table, partitionValue, e);
+                                logBuiltSource(table, partitionValue, source);
+                                try {
+                                    String id = series == null
+                                            ? client.createChip(source, null, tags)
+                                            : client.createChip(source, null, tags, series);
+                                    emptySince.remove(key);
+                                    if (id != null) {
+                                        c.completedSequence = searches.changed(tag);
+                                    }
+                                    return id;
+                                } catch (IOException e) {
+                                    handleCreateFailure(key, table, partitionValue, e);
+                                    return null;
+                                } catch (RuntimeException e) {
+                                    throw contextualize("createChip", table, partitionValue, e);
+                                }
+                            } finally {
+                                c.nanos = System.nanoTime() - createStart;
                             }
-                        } finally {
-                            c.nanos = System.nanoTime() - createStart;
-                        }
-                    }, executor)
-                    .orTimeout(timeoutMinutes, TimeUnit.MINUTES);
-            return c;
-        });
+                        }, executor)
+                        .orTimeout(timeoutMinutes, TimeUnit.MINUTES);
+                return c;
+            });
+        } while (!started.get() && discardIfEvicted(walk, key, creation));
+        Creation result = creation;
         if (started.get()) {
-            creation.future.whenComplete((id, ex) -> {
-                if (id == null || ex != null) inflight.remove(key, creation);
+            result.future.whenComplete((id, ex) -> {
+                if (id == null || ex != null) inflight.remove(key, result);
             });
         }
-        return new Pending(creation, started.get(), partitionValue != null);
+        return new Pending(result, started.get(), partitionValue != null);
     }
 
-    /**
-     * Deletes the chip when its tags don't carry every expected freshness
-     * entry. Returns true when the chip should be treated as missing (deleted
-     * here, already deleted concurrently, or evicted earlier in this pass).
-     * A failed delete is followed by a lookup: a chip that is already gone
-     * counts as evicted, while one that is still present stays in play —
-     * serving stale data beats creating a duplicate alongside a chip that
-     * wouldn't die.
-     */
-    private boolean evictIfStale(SearchChipsResponse.ChipRecord chip,
-                                 Map<String, String> expected,
-                                 Map<String, Map<String, String>> tagsByChip,
-                                 Set<String> evictedChipIds) {
+    private boolean discardIfEvicted(Walk walk, String key, Creation creation) {
+        String chipId = creation.succeeded() ? creation.future.getNow(null) : null;
+        if (chipId == null) {
+            return false;
+        }
+        CompletableFuture<Boolean> running = evictions.get(chipId);
+        boolean gone = running != null
+                ? awaitEviction(walk, running)
+                : searches.evictedSince(walk.tag, walk.search, chipId);
+        if (gone) {
+            inflight.remove(key, creation);
+        }
+        return gone;
+    }
+
+    private boolean usable(Walk walk, SearchChipsResponse.ChipRecord chip, String key,
+                           Map<String, String> expected) {
+        String chipId = chip.getChipId();
+        if (walk.gone.contains(chipId)) {
+            return false;
+        }
+        if (walk.kept.contains(chipId)) {
+            return true;
+        }
+        CompletableFuture<Boolean> running = evictions.get(chipId);
+        boolean gone;
+        if (running != null) {
+            gone = awaitEviction(walk, running);
+        } else if (searches.evictedSince(walk.tag, walk.search, chipId)) {
+            gone = true;
+        } else if (!stale(expected, walk.tagsByChip.get(chipId))) {
+            return true;
+        } else {
+            gone = evict(walk, chip, key);
+        }
+        (gone ? walk.gone : walk.kept).add(chipId);
+        return !gone;
+    }
+
+    private static boolean stale(Map<String, String> expected, Map<String, String> chipTags) {
         if (expected == null) {
             return false;
         }
-        String chipId = chip.getChipId();
-        if (evictedChipIds.contains(chipId)) {
-            return true;
-        }
-        Map<String, String> chipTags = tagsByChip.getOrDefault(chipId, Map.of());
-        boolean stale = false;
+        Map<String, String> tags = chipTags == null ? Map.of() : chipTags;
         for (var entry : expected.entrySet()) {
-            if (!entry.getValue().equals(chipTags.get(entry.getKey()))) {
-                stale = true;
-                break;
+            if (!entry.getValue().equals(tags.get(entry.getKey()))) {
+                return true;
             }
         }
-        if (!stale) {
-            return false;
+        return false;
+    }
+
+    private boolean evict(Walk walk, SearchChipsResponse.ChipRecord chip, String key) {
+        String chipId = chip.getChipId();
+        CompletableFuture<Boolean> mine = new CompletableFuture<>();
+        CompletableFuture<Boolean> running = evictions.putIfAbsent(chipId, mine);
+        if (running != null) {
+            return awaitEviction(walk, running);
         }
+        boolean gone = false;
+        try {
+            if (searches.evictedSince(walk.tag, walk.search, chipId)) {
+                gone = true;
+            } else if (deleteStale(chip)) {
+                // The eviction is recorded and the finished create dropped before
+                // waiters learn the outcome, so none of them can take the chip
+                // from the listing or from the create.
+                noteEviction(walk.tag, key, chipId);
+                walk.evicted++;
+                gone = true;
+            }
+            return gone;
+        } finally {
+            mine.complete(gone);
+            evictions.remove(chipId, mine);
+        }
+    }
+
+    private static boolean awaitEviction(Walk walk, CompletableFuture<Boolean> running) {
+        long start = System.nanoTime();
+        try {
+            return running.join();
+        } finally {
+            walk.evictionWaitNanos += System.nanoTime() - start;
+        }
+    }
+
+    /**
+     * Returns true when the chip is gone: deleted here, or already deleted
+     * elsewhere. Returns false when the delete failed and the re-check
+     * didn't find the chip gone, so the resolve keeps it: serving stale data
+     * beats creating a duplicate alongside a chip that wouldn't die.
+     */
+    private boolean deleteStale(SearchChipsResponse.ChipRecord chip) {
+        String chipId = chip.getChipId();
         try {
             client.deleteChip(chipId);
             log.info("Evicted stale chip {} for table={} partition={} (freshness tags changed)",
                     chipId, chip.getTableName(), chip.getPartitionValue());
+            return true;
         } catch (ChipNotFoundException e) {
             log.info("Stale chip {} for table={} already deleted concurrently",
                     chipId, chip.getTableName());
+            return true;
         } catch (IOException e) {
-            if (!chipGone(chipId)) {
-                log.warn("Failed to evict stale chip {} for table={}; keeping it this resolve",
-                        chipId, chip.getTableName(), e);
-                return false;
+            if (goneAfterFailedDelete(chipId)) {
+                log.info("Stale chip {} for table={} already deleted concurrently (delete failed, lookup confirms gone)",
+                        chipId, chip.getTableName());
+                return true;
             }
-            log.info("Stale chip {} for table={} already deleted concurrently (delete failed, lookup confirms gone)",
-                    chipId, chip.getTableName());
+            log.warn("Failed to evict stale chip {} for table={}; keeping it this resolve",
+                    chipId, chip.getTableName(), e);
+            return false;
         }
-        evictedChipIds.add(chipId);
-        return true;
     }
 
     /**
-     * Engines before 1.16.0 answer a delete of a missing chip with a 500 rather
-     * than a 404, so a lost eviction race looks like a real failure. A lookup
-     * settles it.
+     * Looks the chip up after a failed delete, again after each re-check
+     * delay while it is still listed or the lookup fails. An engine can fail
+     * a delete that loses a race with another delete of the same chip, and
+     * can still list the chip until the winning delete completes. Engines
+     * before 1.16.0 also answer a delete of a missing chip with a 500 rather
+     * than a 404.
      */
-    private boolean chipGone(String chipId) {
-        try {
-            client.getChip(chipId);
-            return false;
-        } catch (ChipNotFoundException e) {
-            return true;
-        } catch (IOException e) {
-            return false;
+    private boolean goneAfterFailedDelete(String chipId) {
+        for (int attempt = 0; ; attempt++) {
+            try {
+                client.getChip(chipId);
+            } catch (ChipNotFoundException e) {
+                return true;
+            } catch (IOException e) {
+                log.debug("Lookup of chip {} after a failed delete failed", chipId, e);
+            }
+            if (attempt >= evictRecheckDelaysMillis.length) {
+                return false;
+            }
+            try {
+                Thread.sleep(evictRecheckDelaysMillis[attempt]);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
         }
     }
 
@@ -780,6 +859,21 @@ public class ChipResolver {
             this.creation = creation;
             this.started = started;
             this.partitioned = partitioned;
+        }
+    }
+
+    private static final class Walk {
+        final String tag;
+        final SharedSearch search;
+        final Map<String, Map<String, String>> tagsByChip = new HashMap<>();
+        final Set<String> gone = new HashSet<>();
+        final Set<String> kept = new HashSet<>();
+        int evicted;
+        long evictionWaitNanos;
+
+        Walk(String tag, SharedSearch search) {
+            this.tag = tag;
+            this.search = search;
         }
     }
 
@@ -894,19 +988,11 @@ public class ChipResolver {
             }
         }
 
-        /** Chips evicted after the search started, which it may still list. */
-        synchronized Set<String> evictedSince(String tag, SharedSearch search) {
+        /** Whether the chip was evicted after the search started, which may still list it. */
+        synchronized boolean evictedSince(String tag, SharedSearch search, String chipId) {
             TagState state = tags.get(tag);
-            if (state == null || state.evicted.isEmpty()) {
-                return Set.of();
-            }
-            Set<String> ids = new HashSet<>();
-            for (var entry : state.evicted.entrySet()) {
-                if (search.sequence < entry.getValue()) {
-                    ids.add(entry.getKey());
-                }
-            }
-            return ids;
+            Long at = state == null ? null : state.evicted.get(chipId);
+            return at != null && search.sequence < at;
         }
 
         /** Whether every search still in use started after the change. */
