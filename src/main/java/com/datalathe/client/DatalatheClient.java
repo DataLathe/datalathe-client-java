@@ -38,6 +38,12 @@ public class DatalatheClient {
     private static final long IDLE_CONNECTION_KEEP_ALIVE_SECONDS = 30;
 
     /**
+     * Covers the requests one engine admits at once by default (32 report
+     * queries, 8 AI requests, 4 chip queries) with room for catalog calls.
+     */
+    private static final int MAX_IDLE_CONNECTIONS = 64;
+
+    /**
      * Default read timeout for catalog calls: chip search, chip lookup, ingest
      * job status, connection and license status, and tag writes. The engine
      * answers these in milliseconds. A call that gets no response in this time
@@ -123,11 +129,36 @@ public class DatalatheClient {
      */
     public DatalatheClient(String baseUrl, Map<String, String> defaultHeaders, RetryConfig retryConfig,
             Duration catalogTimeout) {
+        this(baseUrl, defaultHeaders, retryConfig, catalogTimeout, null);
+    }
+
+    /**
+     * Constructs a client that keeps its connections in the given pool.
+     *
+     * <p>Use this to share one pool between clients, or to keep idle
+     * connections longer than the default 30 seconds. Keep the pool's
+     * keep-alive below the idle timeout of every load balancer or proxy
+     * between this client and the engine; see
+     * <a href="https://github.com/DataLathe/datalathe-client-java#connections-and-proxies">Connections
+     * and proxies</a>.</p>
+     *
+     * @param baseUrl        the datalathe engine base URL (e.g. {@code http://host:3000})
+     * @param defaultHeaders headers to send on every request (may be empty, must not be null)
+     * @param retryConfig    429 and 503 retry behavior; see {@link RetryConfig}
+     * @param catalogTimeout read timeout for catalog calls; see
+     *                       {@link #DatalatheClient(String, Map, RetryConfig, Duration)}
+     * @param connectionPool the pool to use as is; {@code null} for the default
+     *                       pool of up to 64 idle connections, each kept for 30 seconds
+     */
+    public DatalatheClient(String baseUrl, Map<String, String> defaultHeaders, RetryConfig retryConfig,
+            Duration catalogTimeout, ConnectionPool connectionPool) {
         this.baseUrl = baseUrl;
         this.defaultHeaders = Map.copyOf(defaultHeaders);
 
         OkHttpClient.Builder builder = new OkHttpClient.Builder()
-                .connectionPool(new ConnectionPool(5, IDLE_CONNECTION_KEEP_ALIVE_SECONDS, TimeUnit.SECONDS))
+                .connectionPool(connectionPool != null ? connectionPool
+                        : new ConnectionPool(MAX_IDLE_CONNECTIONS, IDLE_CONNECTION_KEEP_ALIVE_SECONDS,
+                                TimeUnit.SECONDS))
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(5, TimeUnit.MINUTES)
                 .writeTimeout(30, TimeUnit.SECONDS);

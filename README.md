@@ -419,7 +419,10 @@ copy constructor, or the copy `withCorrelationId` returns is a plain
 
 ### Connections and proxies
 
-The client pools HTTP connections and evicts an idle one after 30 seconds.
+The client pools HTTP connections. It keeps up to 64 idle connections and evicts
+an idle one after 30 seconds, so a burst of up to 64 concurrent requests reuses
+the connections of a burst that ended less than 30 seconds earlier. After a
+longer pause, each request opens a new connection.
 
 That number is deliberately below the idle timeout of anything likely to sit
 between you and the engine. A load balancer closes an idle connection on its own
@@ -432,6 +435,19 @@ balancer setting.
 
 If you terminate the engine behind a proxy with an idle timeout below 30
 seconds, raise the proxy rather than the client.
+
+To keep connections across longer pauses, or to share one pool between clients,
+pass your own `ConnectionPool` to the constructor. Set its keep-alive below the
+idle timeout of every load balancer or proxy between the client and the engine.
+The client uses the pool as is:
+
+```java
+// Proxy idle timeout is 300 seconds; evict at 240.
+ConnectionPool pool = new ConnectionPool(64, 240, TimeUnit.SECONDS);
+DatalatheClient client = new DatalatheClient(
+    baseUrl, Collections.emptyMap(), RetryConfig.DEFAULT,
+    DatalatheClient.DEFAULT_CATALOG_TIMEOUT, pool);
+```
 
 ### Catalog call timeout
 
